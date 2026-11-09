@@ -7,12 +7,10 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// الصفحة الرئيسية للمنصة
 app.get('/', (req, res) => {
   res.send('ELDOOB.DZ B2B Dropshipping Platform is Running Successfully!');
 });
 
-// مسار تجريبي للتحقق من اتصال قاعدة البيانات
 app.get('/test-db', async (req, res) => {
   try {
     const result = await query('SELECT NOW()');
