@@ -1,0 +1,14 @@
+{
+  "name": "eldoob-dz",
+  "version": "1.0.0",
+  "description": "Algerian B2B Dropshipping Platform",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.3",
+    "nodemailer": "^6.9.13"
+  }
+}
