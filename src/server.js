@@ -1,26 +1,29 @@
-const express = require('express');
-const { query } = require('./db');
-const { sendOrderNotification } = require('./mailer');
+import express from 'express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import multer from 'multer';
+import crypto from 'node:crypto';
+import { pool, asUser } from './db.js';
+import { flushEmails, startMailer } from './mailer.js';
+
+const SECRET = process.env.JWT_SECRET;
+if (!SECRET || SECRET.length < 32) throw new Error('JWT_SECRET يجب ألا يقل عن 32 حرفاً');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(express.json());
-
-app.get('/', (req, res) => {
-  res.send('ELDOOB.DZ B2B Dropshipping Platform is Running Successfully!');
-});
-
-app.get('/test-db', async (req, res) => {
-  try {
-    const result = await query('SELECT NOW()');
-    res.json({ success: true, db_time: result.rows[0].now });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+app.set('trust proxy', 1);
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],                                            // السكربت في app.js فقط، بلا سكربت مضمّن
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ['https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      connectSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
