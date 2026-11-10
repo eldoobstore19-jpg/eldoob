@@ -1,11 +1,34 @@
+# Render Blueprint: خدمة ويب مجانية للخادم والواجهة معاً (قاعدة البيانات على Neon)
 services:
   - type: web
-    name: eldoob-dz
-    env: node
+    name: eldoob
+    runtime: node
     plan: free
-    buildCommand: npm install
-    startCommand: npm start
+    region: frankfurt
+    buildCommand: npm install --omit=dev
+    startCommand: node src/server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
     envVars:
-      - key: NODE_ENV
-        value: production
-        
+      - key: NODE_VERSION
+        value: "20"
+      - key: JWT_SECRET
+        generateValue: true          # يُولَّد تلقائياً (طويل وعشوائي)
+      - key: DATABASE_URL
+        sync: false                  # تلصقه أنت من Neon
+      - key: BREVO_API_KEY
+        sync: false                  # تلصقه أنت من Brevo
+      - key: MAIL_FROM_EMAIL
+        value: eldoobstore19@gmail.com
+      - key: MAIL_FROM_NAME
+        value: ELDOOB.DZ
+      - key: ADMIN_EMAIL
+        value: eldoobstore19@gmail.com
+      - key: ADMIN_NAME
+        value: مدير المنصة
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PHONE
+        sync: false                  # رقم هاتفك (05XXXXXXXX)
+      - key: ADMIN_PASSWORD
+        sync: false                  # كلمة مرور قوية من 10 أحرف فأكثر (تُنشئ حساب المدير عند أول تشغيل)
