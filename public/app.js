@@ -121,3 +121,59 @@ async function avChg(f){if(!f)return;try{const u=await shrinkAv(f),fd=new FormDa
 // ---------- المزيد والدروس والإشعارات
 
 const tuts=()=>`<div class="mute" style="margin-bottom:8px">شروحات مبسطة تساعدك على البدء بسرعة. الفيديوهات تُضاف قريباً.</div>${[['كيف تنشئ طلباً لزبونك','دقيقتان'],['كيف تحدد سعر البيع وتحسب ربحك','3 دقائق'],['التوصيل للمكتب أو للمنزل: متى تختار؟','دقيقتان'],['كيف تسحب أرباحك','دقيقة']].map(([t,d],i)=>`<div class="card" style="display:flex;gap:12px;align-items:center"><div class="th" style="width:64px;height:48px;background:var(--ink);color:var(--gold-hi);font-size:22px">▶</div><div style="flex:1"><b>${i+1}. ${t}</b><div class="mute">فيديو · ${d} · قريباً</div></div></div>`).join('')}`;
+const pushAsk=()=>isAff()&&!S.push[S.user.id]&&!S.later[S.user.id]?`<div class="card nw"><div style="font-weight:600">🔔 تريد أن نخبرك فور تغيّر حالة طلباتك؟</div><div class="mute" style="margin:4px 0 8px">اختياري، ويمكنك تغييره في أي وقت من صفحة الإشعارات.</div><button class="btn sm" data-pa="yes">تفعيل الإشعارات</button> <button class="btn sm gh" data-pa="later">لاحقاً</button></div>`:'';
+const notifs=()=>{const u=S.user,l=S.N.filter(n=>n.uid==u.id),C={ok:'#16a34a',warn:'var(--gold)',bad:'#dc2626'};
+ return`<div class="card"><div class="o" style="border:0"><div><b>إشعارات التطبيق الفورية</b><div class="mute">اختيارية. ${S.push[u.id]?'مفعّلة':'غير مفعّلة'}</div></div><button class="btn sm ${S.push[u.id]?'gh':''}" id="psh">${S.push[u.id]?'إيقاف':'تفعيل'}</button></div><div class="mute">ستصلك أيضاً رسائل على بريدك ${esc(u.email)} عند كل تغيّر في الطلبات والسحب.</div></div>
+ ${l.map(n=>`<div class="card ${n.new?'nw':''}" style="border-inline-start:4px solid ${C[n.kind]}">${n.msg}<div class="mute">${n.t}${n.new?' · جديد':''}</div></div>`).join('')||'<div class="empty">لا توجد إشعارات بعد.</div>'}`};
+const ausers=()=>{const pn=Object.values(U).filter(u=>u.role=='aff'&&u.st=='pending'),ot=Object.values(U).filter(u=>u.role=='aff'&&u.st!='pending');
+ return`<div class="card"><h3>طلبات الانضمام الجديدة (${pn.length})</h3>${pn.map(u=>`<div class="o" style="flex-wrap:wrap"><div style="flex:1;min-width:150px"><b>${u.name}</b><div class="mute">${u.phone} · ${u.email}</div></div><span><button class="btn sm" data-ap="${u.id}">موافقة وتفعيل الحساب</button> <button class="btn sm gh" data-rj="${u.id}">رفض</button></span></div>`).join('')||'<div class="empty">لا توجد طلبات جديدة.</div>'}</div>
+ <div class="card"><h3>المسوّقون</h3>${ot.map(u=>`<div class="o"><div>${u.name}<div class="mute">${u.phone}</div></div><span class="tag t-${u.st=='active'?'Delivered':'Cancelled'}">${u.st=='active'?'مفعّل':'مرفوض'}</span></div>`).join('')}</div>`};
+
+const OST=['all','Pending','Shipped','Delivered','Retour','Cancelled'];
+const orders=()=>{const l=mine(),f=S.of||'all',cnt=k=>k=='all'?l.length:l.filter(o=>o.st==k).length,L=k=>k=='all'?'الكل':ST[k],sh=l.filter(o=>f=='all'||o.st==f);
+ return`<div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px">${OST.map(k=>`<button class="seg2 ${f==k?'on':''}" data-of="${k}">${L(k)} (${cnt(k)})</button>`).join('')}</div>
+ ${sh.map(o=>`<div class="card" style="margin-bottom:8px"><div class="o" style="border:0;padding:0"><div><b>#${o.id} ${o.cust}</b><div class="mute">${o.pt} ×${o.qty} · ${o.wil} (${o.dt=='desk'?'مكتب':'منزل'})</div></div><span class="tag t-${o.st}">${ST[o.st]}</span></div><div class="o" style="border:0;padding:6px 0 0"><span class="mute">يدفع الزبون ${fmt(o.price*o.qty+o.fee)}</span><b>${['Retour','Cancelled'].includes(o.st)?'لا عمولة':'عمولتك '+fmt(pro(o))}</b></div></div>`).join('')||'<div class="empty">لا توجد طلبات في هذه الحالة.</div>'}`};
+function wallet(){const id=S.user.id,pend=mine().filter(o=>['Pending','Shipped'].includes(o.st)).reduce((a,o)=>a+pro(o),0),w=S.wallet[id];
+ return`<div class="w"><div><div class="mute" style="color:#cbd5e1">القابلة للسحب</div><div class="n">${fmt(w)}</div></div><div class="a"><div class="mute">قيد الانتظار</div><div class="n">${fmt(pend)}</div></div></div>
+ <div class="card"><h3>طلب سحب</h3><label>المبلغ<input id="pa" type="number" inputmode="numeric" value="${Math.min(w,1000)}"></label><label>الطريقة<select id="pm"><option value="Flexy">فليكسي (2–12 ساعة)</option><option value="BaridiMob">بريدي موب (12 ساعة – يومان)</option><option value="Direct">استلام يدوي</option></select></label><div class="mute" id="ph" style="margin-bottom:8px">المبالغ فوق 5,000 د.ج تُسلَّم يدوياً.</div><button class="btn" id="wd">اطلب السحب</button></div>
+ <div class="card"><h3>سجل السحب</h3>${S.W.map(p=>`<div class="o"><div>${fmt(p.a)} <span class="mute">${p.m}</span></div><span class="tag t-${p.st}">${PST[p.st]}</span></div>`).join('')||'<div class="empty">لا توجد عمليات سحب.</div>'}</div>`}
+const STS=['Pending','Shipped','Delivered','Retour','Cancelled'];
+const aord=()=>`<div class="card"><h3>كل طلبات المسوّقين</h3>${S.O.map(o=>`<div class="o" style="flex-wrap:wrap"><div style="flex:1;min-width:150px">#${o.id} ${o.cust}<div class="mute">${o.an} · ${o.pt} ×${o.qty}</div><div class="mute">المطلوب تحصيله ${fmt(o.price*o.qty+o.fee)} · عمولة ${fmt(pro(o))}</div></div><select data-sel="${o.id}" aria-label="حالة الطلب ${o.id}" style="width:auto">${STS.map(s=>`<option value="${s}" ${s==(S.dl==o.id?'Delivered':o.st)?'selected':''}>${ST[s]}</option>`).join('')}</select>${S.dl==o.id?`<div class="calc" style="width:100%;margin:6px 0 0"><span>المبلغ المحصَّل فعلياً</span><span></span><input id="dc" type="number" inputmode="numeric" value="${o.price*o.qty+o.fee}" style="grid-column:1/-1;color:#121212"><button class="btn sm" data-dok="${o.id}">تأكيد التسليم</button><button class="btn sm gh" data-dno="1" style="color:#fff">تراجع</button></div>`:''}</div>`).join('')}</div>`;
+async function changeStatus(o,st,col){
+ try{await api('PATCH','/orders/'+o.id+'/status',{status:st.toLowerCase(),...(col!==undefined?{amount_collected:col}:{})});
+  S.dl=null;await load();render();toast('تم تحديث الحالة · أُرسل إشعار وبريد للمسوّق','ok')}
+ catch(e){toast(e.message,'bad');try{await load()}catch(x){}render()}}
+const PST={Requested:'جاري السحب',Completed:'تم السحب',Rejected:'مرفوض'},MN={Flexy:'فليكسي',BaridiMob:'بريدي موب',Direct:'استلام يدوي'};
+const apay=()=>{const f=S.pfl||'all',cn=k=>k=='all'?S.W.length:S.W.filter(p=>p.st==k).length,L=k=>k=='all'?'الكل':PST[k],sh=S.W.filter(p=>f=='all'||p.st==f),sum=S.W.filter(p=>p.st=='Requested').reduce((a,p)=>a+p.a,0);
+ return`<div class="card"><div class="mute">إجمالي المبالغ الجارية (تنتظر تحويلك)</div><div style="font-size:22px;font-weight:800">${fmt(sum)}</div></div>
+ <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px">${['all','Requested','Completed','Rejected'].map(k=>`<button class="seg2 ${f==k?'on':''}" data-pfl="${k}">${L(k)} (${cn(k)})</button>`).join('')}</div>
+ ${sh.map(p=>`<div class="card"><div class="o" style="border:0;padding:0"><div><b>${p.an}</b><div class="mute">${p.ph}</div></div><b>${fmt(p.a)}</b></div>
+ <div class="mute" style="margin:6px 0">الوسيلة: ${MN[p.m]} · حساب الدفع: ${p.pa||'—'} · ${p.d||''}</div>
+ ${p.st=='Requested'?`<label style="margin:0">حالة السحب<select data-psel="${p.id}"><option value="Requested" selected>${PST.Requested}</option><option value="Completed">${PST.Completed}</option><option value="Rejected">${PST.Rejected}</option></select></label>`:`<span class="tag t-${p.st}">${PST[p.st]}</span> <span class="mute">الحالة نهائية</span>`}</div>`).join('')||'<div class="empty">لا توجد طلبات سحب.</div>'}`};
+function payChg(id,v){const p=S.W.find(x=>x.id==id);if(!p||p.st!='Requested'||v=='Requested'){render();return}
+ run(async()=>{await api('PATCH','/payouts/'+id,{status:v.toLowerCase()});await load();toast(v=='Completed'?'تم السحب · أُرسل إشعار وبريد للمسوّق':'رُفض الطلب وأُعيد المبلغ إلى المحفظة',v=='Completed'?'ok':'bad')}).then(()=>render())}
+const esc=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+let F=null;
+const aprod=()=>`<button class="btn" data-pf="new" style="margin-bottom:10px">➕ إضافة منتج جديد</button>
+<div class="card"><h3>المنتجات والمخزون</h3><div class="mute" style="margin-bottom:6px">عدّل الكمية واضغط حفظ: تظهر للمسوّقين فوراً. تنقص الكمية تلقائياً مع كل طلب، وعند الصفر يصبح المنتج «نفد المخزون».</div>
+${S.P.map(p=>`<div class="o" style="flex-wrap:wrap"><div style="display:flex;gap:8px;align-items:center;flex:1;min-width:150px"><span class="th">${p.imgs&&p.imgs[0]?`<img src="${p.imgs[0]}" alt="">`:p.e}</span><div><div style="font-size:14px;font-weight:600">${p.t} ${p.stock?'':'<span class="tag t-Cancelled">نفد المخزون</span>'}</div><div class="mute">جملة ${fmt(p.base)} · مقترح ${fmt(p.sug)}</div></div></div>
+<div style="display:flex;gap:6px;align-items:center"><input class="sq" id="sq${p.id}" type="number" min="0" inputmode="numeric" value="${p.stock}" aria-label="الكمية المتاحة"><button class="btn sm" data-sv="${p.id}">حفظ</button></div>
+<div style="display:flex;gap:6px;width:100%;justify-content:flex-end"><button class="btn sm dk" data-pf="${p.id}">تعديل</button><button class="btn sm ${S.del==p.id?'rd':'gh'}" data-pd="${p.id}">${S.del==p.id?'تأكيد الحذف':'حذف'}</button></div></div>`).join('')||'<div class="empty">لا توجد منتجات. أضف أول منتج.</div>'}</div>`;
+const rp=()=>{$('#f-prev').innerHTML=F.imgs.map((u,i)=>`<div><img src="${u}" alt=""><button data-ri="${i}" aria-label="حذف الصورة">✕</button></div>`).join('')};
+const shrink=f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,1000/im.width),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);r(c.toDataURL('image/jpeg',.82))};im.onerror=()=>r(null);im.src=rd.result};rd.onerror=()=>r(null);rd.readAsDataURL(f)});
+function pform(id){if(!isAdm())return;const p=id=='new'?null:pid(id);F={imgs:p&&p.imgs?[...p.imgs]:[]};
+ const s=$('#sheet');s.hidden=false;s.className='sheet';
+ s.innerHTML=`<div class="h"><span>${p?'تعديل المنتج':'إضافة منتج جديد'}</span><button class="x" id="cl" aria-label="إغلاق">✕</button></div><div class="body">
+ <label>اسم المنتج الدقيق<input id="f-t" value="${p?esc(p.ct):''}"></label>
+ <div class="row"><label>سعر الجملة (د.ج)<input id="f-b" type="number" inputmode="numeric" value="${p?p.base:''}"></label><label>السعر المقترح للبيع (د.ج)<input id="f-s" type="number" inputmode="numeric" value="${p?p.sug:''}"></label></div>
+ <label>${p?'الكمية المتاحة':'الكمية الأولية في المخزون'}<input id="f-k" type="number" min="0" inputmode="numeric" value="${p?p.stock:''}"></label>
+ <label>صور المنتج (يمكن اختيار عدة صور، والأولى هي الغلاف)<input id="f-i" type="file" accept="image/*" multiple></label><div class="prev" id="f-prev"></div>
+ <label>الخطاف التسويقي<textarea id="f-h" rows="2">${p?esc(p.h):''}</textarea></label>
+ <label>الوصف الكامل<textarea id="f-d" rows="5">${p?esc(p.d):''}</textarea></label>
+ <button class="btn" id="f-go">${p?'حفظ التعديلات':'إضافة المنتج'}</button></div>`;
+ const g=i=>$('#'+i);rp();g('cl').onclick=closeSheet;
+ g('f-i').onchange=async e=>{for(const f of e.target.files){if(F.imgs.length>=8){toast('الحد الأقصى 8 صور','bad');break}const u=await shrink(f);if(u)F.imgs.push(u)}e.target.value='';rp()};
+ g('f-go').onclick=async()=>{const t=g('f-t').value.trim(),b=+g('f-b').value,sg=+g('f-s').value,k=g('f-k').value;
+  if(!t||!(b>0)||!(sg>0)||k===''||!Number.isInteger(+k)||+k<0){toast('أكمل الاسم والسعرين والكمية (عدد صحيح 0 أو أكثر)','bad');return}
+  if(sg<b){toast('السعر المقترح أقل من سعر الجملة','bad');return}
+  const btn=g('f-go');btn.disabled=true;
