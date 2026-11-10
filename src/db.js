@@ -23,3 +23,7 @@ export async function asUser(user, fn) {
   } catch (e) {
     await c.query('ROLLBACK').catch(() => {});
     throw e;
+  } finally {
+    c.release();
+  }
+}
