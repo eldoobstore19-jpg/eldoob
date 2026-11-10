@@ -177,3 +177,136 @@ function pform(id){if(!isAdm())return;const p=id=='new'?null:pid(id);F={imgs:p&&
   if(!t||!(b>0)||!(sg>0)||k===''||!Number.isInteger(+k)||+k<0){toast('أكمل الاسم والسعرين والكمية (عدد صحيح 0 أو أكثر)','bad');return}
   if(sg<b){toast('السعر المقترح أقل من سعر الجملة','bad');return}
   const btn=g('f-go');btn.disabled=true;
+                             
+if(b.length<8){toast('كلمة السر الجديدة قصيرة جداً','bad');return}if(b!==c){toast('كلمتا السر غير متطابقتين','bad');return}
+ try{await api('POST','/auth/password',{current_password:a,new_password:b});toast('تم تغيير كلمة السر بنجاح','ok');$('#pw0').value=$('#pw1').value=$('#pw2').value=''}catch(e){toast(e.message,'bad')}}
+async function doSva(){const n=$('#an').value.trim(),us=$('#au').value.trim().toLowerCase(),p=$('#ap').value.replace(/\s/g,''),pm=$('#pm2').value,pa=$('#pa2').value.trim();
+ if(!n||!us||!p){toast('أدخل البيانات الأساسية','bad');return}if(!RX.u.test(us)){toast('اسم المستخدم غير صالح','bad');return}if(!RX.p.test(p)){toast('رقم الهاتف غير صالح','bad');return}
+ try{await api('PATCH','/me',{full_name:n,username:us,phone:p,payout_method:pm,payout_account:pa});S.user.name=n;S.user.username=us;S.user.phone=p;S.user.pm=pm;S.user.pa=pa;toast('تم حفظ التعديلات','ok');render()}catch(e){toast(e.message,'bad')}}
+
+const tuts=()=>`<div class="card"><h3>1. كيف تبدأ العمل في الدروبشيبينغ؟</h3><p>تصفح المنتجات المتوفرة في المنصة، اختر منتجاً يناسب جمهورك، وقم بنسخ وصفه وصوره لنشره على صفحتك في إنستغرام، تيك توك، أو فيسبوك.</p></div>
+<div class="card"><h3>2. كيف تسجل طلبية زبون؟</h3><p>عندما يطلب الزبون المنتج، اضغط على زر "طلب هذا المنتج" وضع معلوماته بدقة (الاسم، الهاتف، الولاية، وعنوانه). اختر سعر البيع الخاص بك وسيحسب النظام عميلتك فوراً.</p></div>
+<div class="card"><h3>3. التوصيل والدفع</h3><p>التوصيل يتم عبر شركات النقل المعتمدة إلى 58 ولاية (حتى المكتب أو المنزل)، والدفع يكون عند الاستلام (COD).</p></div>`;
+
+const notifs=()=>`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="margin:0">الإشعارات</h3>${S.N.length?`<button class="btn sm" id="cln" style="width:auto">تحديد الكل مقروء</button>`:''}</div>${S.N.length?S.N.map(n=>`<div class="card" style="border-right:4px solid ${n.read?'var(--line)':'var(--gold)'};opacity:${n.read?.7:1}"><div style="display:flex;justify-content:between;align-items:flex-start"><div><b>${esc(n.msg)}</b></div><span class="mute" style="font-size:11px;flex:none;margin-inline-start:8px">${n.t}</span></div></div>`).join(''):'<div class="card" style="text-align:center;padding:32px"><div class="mute">لا توجد إشعارات حالياً</div></div>'}`;
+const deliv=()=>`<div class="card"><h3>أسعار التوصيل المعتمدة</h3><div class="mute" style="margin-bottom:12px">اختر الولاية للاطلاع على تكلفة التوصيل الدقيقة للمكتب أو المنزل.</div><label>الولاية<select id="dw"><option value="">-- اختر الولاية --</option>${WIL.map((w,i)=>`<option value="${i}">${w.c}. ${w.n}</option>`).join('')}</select></label><div id="dres"></div></div>`;
+function dl(){const i=$('#dw').value;if(i===''){ $('#dres').innerHTML=''; return;}const w=WIL[i];$('#dres').innerHTML=`<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px"><b>${w.n}</b><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"><div class="card" style="margin:0;text-align:center"><div class="mute">توصيل للمكتب</div><div style="font-size:18px;font-weight:700;color:var(--gold-hi);margin-top:4px">${fmt(w.desk)}</div></div><div class="card" style="margin:0;text-align:center"><div class="mute">توصيل للمنزل</div><div style="font-size:18px;font-weight:700;color:var(--gold-hi);margin-top:4px">${fmt(w.home)}</div></div></div></div>`}
+
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+const pushAsk=()=>'';
+
+// نماذج تفاصيل المنتجات والطلبات والمدير
+const orderModal=p=>`<div class="modal"><div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="margin:0">طلب منتج: ${esc(p.ct||p.t)}</h3><button class="btn sm" id="mcl" style="width:auto">✕</button></div>
+<div class="card" style="background:var(--bg);margin-bottom:12px"><div><b>سعر الجملة الثابت:</b> ${fmt(p.base)}</div><div><b>الكمية المتاحة:</b> ${p.stock} قطعة</div></div>
+<label>اسم الزبون الكامل<input id="onm"></label><label>رقم الهاتف<input id="oph" inputmode="tel" placeholder="05XXXXXXXX"></label>
+<label>الولاية<select id="owl"><option value="">-- اختر الولاية --</option>${WIL.map((w,i)=>`<option value="${i}">${w.c}. ${w.n}</option>`).join('')}</select></label>
+<label>نوع التوصيل<select id="odt"><option value="home">منزل</option><option value="desk">مكتب</option></select></label>
+<label>الكمية<input id="oqt" type="number" min="1" max="${p.stock}" value="1"></label>
+<label>سعر البيع للزبون (د.ج)<input id="oprc" type="number" value="${p.sug}" min="${p.base}"></label>
+<div id="osum" style="margin:12px 0;padding:10px;background:var(--bg);border-radius:8px;font-size:14px"></div>
+<button class="btn" id="osend">إرسال الطلب الآن</button></div></div>`;
+
+const prodDetail=p=>`<div class="modal"><div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="margin:0">${esc(p.t)}</h3><button class="btn sm" id="mcl" style="width:auto">✕</button></div>
+${p.imgs&&p.imgs.length?`<div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:12px;padding-bottom:6px">${p.imgs.map(im=>`<img src="${im}" alt="" style="width:120px;height:120px;object-fit:cover;border-radius:8px;flex:none">`).join('')}</div>`:''}
+<div class="card"><div><b>الوصف:</b></div><div style="margin-top:4px;line-height:1.7;white-space:pre-wrap">${esc(p.d||'لا يوجد وصف')}</div></div>
+<div class="card"><div><b>السعر الأساسي للجملة:</b> ${fmt(p.base)}</div><div><b>السعر المقترح للبيع:</b> ${fmt(p.sug)}</div><div style="margin-top:6px">${stk(p)}</div></div>
+${p.stock>0?`<button class="btn" id="obuy" data-p="${p.id}">طلب هذا المنتج الآن</button>`:''}</div></div>`;
+
+const orders=()=>{const l=mine();return`<h2>طلباتي (${l.length})</h2>${l.length?l.map(o=>`<div class="card"><div style="display:flex;justify-content:between;align-items:center"><b>${esc(o.pt)} (${o.qty})</b><span class="tag t-${o.st}">${ST[o.st]||o.st}</span></div><div class="mute" style="margin-top:6px">${esc(o.cust)} — ${esc(o.phone)} — ${WIL[o.wil]?.n||''}</div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;border-top:1px solid var(--line);padding-top:8px"><span>سعر البيع: <b>${fmt(o.price)}</b></span><span style="color:var(--gold-hi)">ربحك: <b>${fmt((o.price-o.base)*o.qty)}</b></span></div></div>`).join(''):'<div class="card" style="text-align:center;padding:32px"><div class="mute">لا توجد طلبات مسجلة بعد</div></div>'}`};
+
+const wallet=()=>{const u=S.user,w=S.wallet[u.id]||0,l=S.W.filter(x=>x.an==u.name);
+return`<div class="card" style="text-align:center;padding:24px"><div class="mute">رصيدك الحالي القابل للسحب</div><div style="font-size:32px;font-weight:800;color:var(--gold-hi);margin:8px 0">${fmt(w)}</div><button class="btn" id="reqp" ${w<1000?'style="opacity:.5" aria-disabled="true"':''}>طلب سحب الأرباح</button><div class="mute" style="margin-top:6px">الحد الأدنى للسحب: 1,000 د.ج</div></div>
+<h3>طلبات السحب السابقة</h3>${l.length?l.map(p=>`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><b>${fmt(p.a)} (${p.m})</b><span class="tag t-${p.st}">${p.st=='Requested'?'قيد المراجعة':(p.st=='Completed'?'تم التحويل':'مرفوض')}</span></div><div class="mute" style="margin-top:4px">تاريخ الطلب: ${p.d}</div></div>`).join(''):'<div class="card" style="text-align:center;padding:24px"><div class="mute">لا توجد طلبات سحب سابقة</div></div>'}`;
+
+// إدارة المدير
+const aord=()=>{const l=S.O;return`<h2>إدارة الطلبات (${l.length})</h2>${l.length?l.map(o=>`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(o.pt)} (${o.qty})</b><select class="osel sm" data-oid="${o.id}">${Object.entries(ST).map(([k,v])=>`<option value="${k}" ${o.st==k?'selected':''}>${v}</option>`).join('')}</select></div><div class="mute" style="margin-top:6px">الزبون: ${esc(o.cust)} (${esc(o.phone)}) — ${WIL[o.wil]?.n||''} (${o.dt=='home'?'منزل':'مكتب'})</div><div class="mute" style="margin-top:4px">المسوق: ${esc(o.an)} | سعر البيع: ${fmt(o.price)} | ربح المسوق: ${fmt((o.price-o.base)*o.qty)}</div></div>`).join(''):'<div class="card" style="text-align:center;padding:32px"><div class="mute">لا توجد طلبات في النظام</div></div>'}`;
+const apay=()=>{const l=S.W;return`<h2>طلبات السحب (${l.length})</h2>${l.length?l.map(w=>`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(w.an)} — ${fmt(w.a)} (${w.m})</b><span class="tag t-${w.st}">${w.st}</span></div><div class="mute" style="margin-top:6px">الحساب: <span dir="ltr">${esc(w.pa)}</span> | هاتف: <span dir="ltr">${esc(w.ph)}</span></div>${w.st=='Requested'?`<div style="display:flex;gap:8px;margin-top:10px"><button class="btn sm apc" data-wid="${w.id}" style="background:var(--ok)">قبول وتحويل</button><button class="btn sm apr" data-wid="${w.id}" style="background:var(--bad)">رفض</button></div>`:''}</div>`).join(''):'<div class="card" style="text-align:center;padding:32px"><div class="mute">لا توجد طلبات سحب معلقة</div></div>'}`;
+const aprod=()=>{const l=S.P;return`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="margin:0">المنتجات (${l.length})</h3><button class="btn sm" id="newp" style="width:auto">+ إضافة منتج جديد</button></div>${l.map(p=>`<div class="card" style="display:flex;gap:12px;align-items:center"><div style="width:50px;height:50px;background:var(--bg);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:24px;flex:none">${p.imgs[0]?`<img src="${p.imgs[0]}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:6px">`:p.e}</div><div style="flex:1"><b>${esc(p.t)}</b><div class="mute">جملة: ${fmt(p.base)} | مقترح: ${fmt(p.sug)} | المخزون: ${p.stock}</div></div><button class="btn sm edp" data-pid="${p.id}" style="width:auto">تعديل</button></div>`).join('')}`};
+const ausers=()=>{const l=Object.values(U);return`<h2>إدارة المسوقين (${l.length})</h2>${l.map(u=>`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(u.name)}</b><span class="tag t-${u.st}">${u.st}</span></div><div class="mute" style="margin-top:4px">@${esc(u.username)} — <span dir="ltr">${esc(u.phone)}</span></div></div>`).join('')}`};
+
+const prodModal=p=>`<div class="modal"><div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="margin:0">${p?'تعديل المنتج':'إضافة منتج جديد'}</h3><button class="btn sm" id="mcl" style="width:auto">✕</button></div>
+<label>عنوان المنتج<input id="pti" value="${esc(p?.t||'')}"></label>
+<label>العنوان التجاري (اختياري)<input id="pcti" value="${esc(p?.ct||'')}"></label>
+<label>سعر الجملة (د.ج)<input id="pba" type="number" value="${p?.base||1000}"></label>
+<label>السعر المقترح (د.ج)<input id="psu" type="number" value="${p?.sug||1500}"></label>
+<label>الكمية في المخزون<input id="pst" type="number" value="${p?.stock||10}"></label>
+<label>الوصف<textarea id="pde" rows="3">${esc(p?.d||'')}</textarea></label>
+<label>رابط الصورة<input id="pim" value="${esc(p?.imgs?.[0]||'')}"></label>
+<button class="btn" id="savp" data-pid="${p?.id||''}">${p?'حفظ التعديلات':'إضافة المنتج'}</button></div></div>`;
+
+const closeSheet=()=>{S.dl=null;const m=$('.modal');if(m)m.remove()}
+
+// مستمعات الأحداث للتفاعل الكامل مع الواجهة
+document.addEventListener('click',async e=>{
+ const t=e.target;
+ if(t.dataset.g){S.scr=t.dataset.g;render();return}
+ if(t.id=='lgo'){await doLogin();return}
+ if(t.id=='rgo'){await doReg();return}
+ if(t.id=='ogo'){await doOtp();return}
+ if(t.id=='ors'){await doResend();return}
+ if(t.id=='fgo'){await doForgot();return}
+ if(t.id=='fro'){await doReset();return}
+ if(t.id=='chp'){await doChp();return}
+ if(t.id=='sva'){await doSva();return}
+ if(t.id=='cln'){try{await api('POST','/notifications/read');S.N.forEach(n=>n.read=true);render();toast('تم تحديد الكل كمقروء','ok')}catch(er){toast(er.message,'bad')}}
+ if(t.id=='thm'){setTheme(dark()?'light':'dark');render();return}
+ if(t.id=='bell'){S.tab='notifs';render();return}
+ if(t.id=='mcl'||t.classList.contains('modal')){closeSheet();return}
+ if(t.dataset.n){S.tab=t.dataset.n;render();window.scrollTo(0,0);return}
+
+ // تفاصيل المنتج وطلبه
+ const btnP=t.closest('.p');
+ if(btnP&&!t.closest('button.btn')){const p=pid(btnP.dataset.p);if(p){S.dl=p;document.body.insertAdjacentHTML('beforeend',prodDetail(p));return}}
+ if(t.id=='obuy'){const p=pid(t.dataset.p);closeSheet();if(p){S.dl=p;document.body.insertAdjacentHTML('beforeend',orderModal(p));return}}
+ if(t.id=='reqp'){try{await api('POST','/payouts');toast('تم إرسال طلب السحب بنجاح','ok');await load();render()}catch(er){toast(er.message,'bad');return}}
+
+ if(t.id=='osend'){
+  const p=S.dl,cust=$('#onm').value.trim(),phone=$('#oph').value.replace(/\s/g,''),wil=$('#owl').value,dt=$('#odt').value,qty=parseInt($('#oqt').value)||1,price=parseInt($('#oprc').value)||p.base;
+  const bad=m=>toast(m,'bad');
+  if(!cust)return bad('أدخل اسم الزبون');if(!RX.p.test(phone))return bad('رقم هاتف الزبون غير صالح');if(wil==='')return bad('اختر الولاية');
+  if(qty<1||qty>p.stock)return bad('الكمية غير متاح منها هذا العدد');if(price<p.base)return bad('سعر البيع لا يمكن أن يقل عن سعر الجملة');
+  try{await api('POST','/orders',{product_id:p.id,customer_name:cust,customer_phone:phone,wilaya:parseInt(wil)+1,delivery_type:dt,quantity:qty,resale_price:price});closeSheet();await load();render();toast('تم تسجيل الطلبية بنجاح!','ok')}catch(er){toast(er.message,'bad')}
+  return;
+ }
+
+ // قبول أو رفض السحب أو تعديل حالة الطلب في لوحة التحكم
+ if(t.classList.contains('apc')||t.classList.contains('apr')){
+  const wid=t.dataset.wid,act=t.classList.contains('apc')?'completed':'rejected';
+  try{await api('PATCH',`/payouts/${wid}`,{status:act});await load();render();toast('تم تحديث حالة طلب السحب','ok')}catch(er){toast(er.message,'bad')}
+  return;
+ }
+
+ if(t.id=='newp'){document.body.insertAdjacentHTML('beforeend',prodModal(null));return}
+ if(t.classList.contains('edp')){const p=pid(t.dataset.pid);document.body.insertAdjacentHTML('beforeend',prodModal(p));return}
+ if(t.id=='savp'){
+  const pid_val=t.dataset.pid,title=$('#pti').value.trim(),ct=$('#pcti').value.trim(),base=parseInt($('#pba').value)||0,sug=parseInt($('#psu').value)||0,stock=parseInt($('#pst').value)||0,d=$('#pde').value.trim(),img=$('#pim').value.trim();
+  if(!title||!base)return toast('أدخل البيانات الأساسية للمنتج','bad');
+  try{
+   if(pid_val){await api('PATCH',`/admin/products/${pid_val}`,{title,commercial_title:ct,base_price:base,suggested_price:sug,stock_qty:stock,description:d,images:img?[img]:[]});toast('تم تعديل المنتج','ok')}
+   else{await api('POST','/admin/products',{title,commercial_title:ct,base_price:base,suggested_price:sug,stock_qty:stock,description:d,images:img?[img]:[]});toast('تمت إضافة المنتج','ok')}
+   closeSheet();await load();render();
+  }catch(er){toast(er.message,'bad')}
+  return;
+ }
+});
+
+document.addEventListener('input',e=>{
+ const t=e.target;
+ if(t.id=='q'){S.q=t.value;res();return}
+ if(t.id=='avf'&&t.files&&t.files[0]){shrinkAv(t.files[0]).then(async im=>{try{await api('PATCH','/me',{avatar_url:im});S.user.av=im;render();toast('تم تحديث الصورة الشخصية','ok')}catch(er){toast(er.message,'bad')}}).catch(er=>toast(er.message,'bad'));return}
+ if(['onm','oph','owl','odt','oqt','oprc'].includes(t.id)&&S.dl){
+  const p=S.dl,wil=$('#owl').value,dt=$('#odt').value,qty=parseInt($('#oqt').value)||1,price=parseInt($('#oprc').value)||p.base;
+  if(wil!==''&&WIL[wil]){
+   const w=WIL[wil],fee=dt=='home'?w.home:w.desk,tot=(price*qty)+fee,prof=(price-p.base)*qty;
+   $('#osum').innerHTML=`تكلفة التوصيل: <b>${fmt(fee)}</b> | إجمالي السعر للزبون: <b>${fmt(tot)}</b><br><span style="color:var(--gold-hi)">ربحك الصافي: <b>${fmt(prof)}</b></span>`;
+  }else{$('#osum').innerHTML='';}
+ }
+});
+
+document.addEventListener('change',async e=>{
+ const t=e.target;
+ if(t.classList.contains('osel')){const oid=t.dataset.oid,st=t.value;try{await api('PATCH',`/admin/orders/${oid}`,{status:st});await load();render();toast('تم تحديث حالة الطلبية','ok')}catch(er){toast(er.message,'bad')}}
+ if(t.id=='dw'){dl()}
+});
+
+if(TOKEN){boot().catch(()=>{TOKEN=null;try{sessionStorage.removeItem('eldoob-token')}catch(e){}render()})}else{render()}
