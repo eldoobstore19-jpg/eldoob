@@ -114,7 +114,7 @@ app.post('/api/auth/register/verify', authLimiter, wrap(async (req, res) => {
 
 app.post('/api/auth/login', authLimiter, wrap(async (req, res) => {
   const ident = String(req.body.identifier ?? req.body.phone ?? '').trim().toLowerCase();
-  const { rows: [u] } = await pool.query('SELECT id, role, full_name, password_hash, is_active, rejected_at FROM users WHERE phone = $1 OR lower(username) = $1', [ident]);
+  const { rows: [u] } = await pool.query('SELECT id, role, full_name, password_hash, is_active, rejected_at FROM users WHERE email = $1 OR lower(username) = $1', [ident]);
   const ok = await bcrypt.compare(String(req.body.password || ''), u ? u.password_hash : DUMMY);
   if (!u || !ok) throw bad('بيانات الدخول غير صحيحة', 401);
   if (!u.is_active) throw bad('هذا الحساب معطّل', 403);
