@@ -44,7 +44,7 @@ app.get('/uploads/:name', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
+const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const bad = (msg, http = 400) => Object.assign(new Error(msg), { http });
 const int = (v, name, min = 0) => { const n = Number(v); if (!Number.isInteger(n) || n < min) throw bad(`${name} غير صالح`); return n; };
 const str = (v, name, max = 200) => { if (typeof v !== 'string' || !v.trim() || v.length > max) throw bad(`${name} مطلوب`); return v.trim(); };
