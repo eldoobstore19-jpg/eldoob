@@ -76,7 +76,7 @@ const email_ = v => { const e = str(v, 'البريد الإلكتروني', 120)
 const password_ = v => { const s = str(v, 'كلمة المرور', 72); if (s.length < 8) throw bad('كلمة المرور 8 أحرف على الأقل'); return s; };
 const username_ = v => { const s = str(v, 'اسم المستخدم', 20).toLowerCase(); if (!USERNAME.test(s)) throw bad('اسم المستخدم: 3 إلى 20 حرفاً'); return s; };
 const phone_ = v => { const s = str(v, 'الهاتف', 10); if (!PHONE.test(s)) throw bad('رقم هاتف جزائري غير صالح'); return s; };
-mount(app, { pool, asUser, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf, email_, password_, otpHash, token, SECRET, bcrypt, jwt, checkOtp });
+
 async function issueOtp(purpose, email, payload) {
   const { rows: [last] } = await pool.query('SELECT created_at FROM email_otps WHERE email = $1 AND purpose = $2 ORDER BY id DESC LIMIT 1', [email, purpose]);
   if (last && Date.now() - new Date(last.created_at).getTime() < 60000) throw bad('انتظر دقيقة قبل طلب رمز جديد', 429);
@@ -96,6 +96,9 @@ async function checkOtp(purpose, email, code) {
   await pool.query('UPDATE email_otps SET used_at = now() WHERE id = $1', [o.id]);
   return o;
 }
+
+// مسارات إضافية: استعادة كلمة السر، الدخول بالرمز، الإشعارات، الولايات والبلديات، السحب
+mount(app, { pool, asUser, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf, email_, password_, otpHash, token, SECRET, bcrypt, jwt, checkOtp });
 
 app.post('/api/auth/register/start', authLimiter, wrap(async (req, res) => {
   const b = req.body, name = str(b.full_name, 'الاسم', 100), username = username_(b.username), phone = phone_(b.phone), email = email_(b.email), pass = password_(b.password);
@@ -122,20 +125,6 @@ app.post('/api/auth/login', authLimiter, wrap(async (req, res) => {
   res.json({ token: token(u.id), user: { id: u.id, role: u.role, full_name: u.full_name } });
 }));
 
-app.post('/api/auth/forgot', authLimiter, wrap(async (req, res) => {
-  const email = email_(req.body.email);
-  const { rows: [u] } = await pool.query('SELECT id FROM users WHERE email = $1 AND is_active', [email]);
-  if (u) { try { await issueOtp('reset', email); } catch (e) { if (e.http !== 429) throw e; } }
-  res.json({ message: 'إن كان البريد مسجّلاً فقد أرسلنا إليه رمزاً.' });
-}));
-
-app.post('/api/auth/reset', authLimiter, wrap(async (req, res) => {
-  const email = email_(req.body.email), pass = password_(req.body.new_password);
-  await checkOtp('reset', email, str(req.body.code, 'الرمز', 10));
-  await pool.query('UPDATE users SET password_hash = $2, password_changed_at = now() WHERE email = $1', [email, await bcrypt.hash(pass, 12)]);
-  res.json({ ok: true });
-}));
-
 app.get('/api/me', auth, wrap(async (req, res) => {
   const { rows: [u] } = await pool.query('SELECT id, role, full_name, username, phone, email, email_verified_at IS NOT NULL AS email_verified, avatar_url, payout_method, payout_account FROM users WHERE id = $1', [req.user.id]);
   res.json(u);
@@ -154,7 +143,7 @@ app.patch('/api/me', auth, wrap(async (req, res) => {
 app.post('/api/me/password', auth, wrap(async (req, res) => {
   const { rows: [u] } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
   if (!(await bcrypt.compare(String(req.body.current_password || ''), u.password_hash))) throw bad('كلمة السر الحالية غير صحيحة', 400);
-  await pool.query('UPDATE users SET password_hash = $2, password_changed_at = now() WHERE id = $1', [req.user.id, await bcrypt.hash(password_(req.body.new_password), 12)]);
+  await pool.query("UPDATE users SET password_hash = $2, password_changed_at = now() - interval '3 seconds' WHERE id = $1", [req.user.id, await bcrypt.hash(password_(req.body.new_password), 12)]);
   res.json({ token: token(req.user.id) });
 }));
 
@@ -315,7 +304,7 @@ app.post('/api/payouts', affiliate, wrap(async (req, res) => {
     const { rows: [w] } = await c.query('SELECT balance, payout_method, payout_account FROM affiliate_balances ab JOIN users u ON u.id = ab.affiliate_id WHERE ab.affiliate_id = $1 FOR UPDATE', [req.user.id]);
     if (!w || w.balance < amount) throw bad('رصيدك غير كافٍ', 400);
     if (!w.payout_method || !w.payout_account) throw bad('يرجى ضبط معلومات الدفع في ملفك الشخصي أولاً', 400);
-    
+
     await c.query('UPDATE affiliate_balances SET balance = balance - $2 WHERE affiliate_id = $1', [req.user.id, amount]);
     const { rows: [p] } = await c.query(
       `INSERT INTO payout_requests (affiliate_id, amount, method, account, status) VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
@@ -323,25 +312,6 @@ app.post('/api/payouts', affiliate, wrap(async (req, res) => {
     return p;
   });
   res.status(201).json(row);
-}));
-
-app.get('/api/admin/payouts', ...admin, wrap(async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT p.id, p.amount, p.status, p.method, p.account, p.created_at, u.full_name AS affiliate, u.phone FROM payout_requests p JOIN users u ON u.id = p.affiliate_id WHERE p.status = 'pending' ORDER BY p.id ASC`);
-  res.json(rows);
-}));
-
-app.patch('/api/admin/payouts/:id', ...admin, wrap(async (req, res) => {
-  const status = oneOf(req.body.status, ['paid', 'rejected'], 'الحالة');
-  await asUser(req.user, async c => {
-    const { rows: [p] } = await c.query('SELECT affiliate_id, amount, status FROM payout_requests WHERE id = $1 FOR UPDATE', [int(req.params.id, 'المعرّف', 1)]);
-    if (!p || p.status !== 'pending') throw bad('طلب السحب غير موجود أو معالج مسبقاً', 400);
-    if (status === 'rejected') {
-      await c.query('UPDATE affiliate_balances SET balance = balance + $2 WHERE affiliate_id = $1', [p.affiliate_id, p.amount]);
-    }
-    await c.query('UPDATE payout_requests SET status = $2, paid_at = CASE WHEN $2 = \'paid\' THEN now() END WHERE id = $1', [req.params.id, status]);
-  });
-  res.json({ ok: true });
 }));
 
 // ───────── معالج الأخطاء العام وتشغيل الخادم ─────────
