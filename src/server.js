@@ -7,6 +7,7 @@ import multer from 'multer';
 import crypto from 'node:crypto';
 import { pool, asUser } from './db.js';
 import { flushEmails, startMailer } from './mailer.js';
+import { mount } from './extra.js';
 
 const SECRET = process.env.JWT_SECRET;
 if (!SECRET || SECRET.length < 32) throw new Error('JWT_SECRET يجب ألا يقل عن 32 حرفاً');
@@ -75,7 +76,7 @@ const email_ = v => { const e = str(v, 'البريد الإلكتروني', 120)
 const password_ = v => { const s = str(v, 'كلمة المرور', 72); if (s.length < 8) throw bad('كلمة المرور 8 أحرف على الأقل'); return s; };
 const username_ = v => { const s = str(v, 'اسم المستخدم', 20).toLowerCase(); if (!USERNAME.test(s)) throw bad('اسم المستخدم: 3 إلى 20 حرفاً'); return s; };
 const phone_ = v => { const s = str(v, 'الهاتف', 10); if (!PHONE.test(s)) throw bad('رقم هاتف جزائري غير صالح'); return s; };
-
+mount(app, { pool, asUser, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf, email_, password_, otpHash, token, SECRET, bcrypt, jwt, checkOtp });
 async function issueOtp(purpose, email, payload) {
   const { rows: [last] } = await pool.query('SELECT created_at FROM email_otps WHERE email = $1 AND purpose = $2 ORDER BY id DESC LIMIT 1', [email, purpose]);
   if (last && Date.now() - new Date(last.created_at).getTime() < 60000) throw bad('انتظر دقيقة قبل طلب رمز جديد', 429);
