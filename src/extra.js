@@ -133,17 +133,27 @@ export function mount(app, H) {
     res.on('finish', () => { if (res.statusCode === 201) later(async () => push(await admins(), 'طلب سحب جديد 💸', 'وصل طلب سحب بانتظار المعالجة', '/')); });
     next();
   });
+  app.get('/api/wallet', auth, wrap(async (req, res) => {
+    const { rows: [w] } = await pool.query('SELECT balance, total_earned, pending_balance FROM affiliate_balances WHERE affiliate_id = $1', [req.user.id]);
+    const { rows: payouts } = await pool.query(`SELECT id, amount, CASE WHEN is_processing AND status::text = 'pending' THEN 'processing' ELSE status::text END AS status, method, account, created_at, paid_at
+      FROM payout_requests WHERE affiliate_id = $1 ORDER BY id DESC LIMIT 20`, [req.user.id]);
+    res.json({ balance: w?.balance || 0, total_earned: w?.total_earned || 0, pending_balance: w?.pending_balance || 0, payouts });
+  }));
   app.get('/api/admin/payouts', ...admin, wrap(async (_req, res) => {
-    res.json((await pool.query(`SELECT p.id, p.amount, p.status, p.method, p.account, p.created_at, u.full_name AS affiliate, u.phone
-      FROM payout_requests p JOIN users u ON u.id = p.affiliate_id WHERE p.status IN ('pending', 'processing') ORDER BY p.id`)).rows);
+    res.json((await pool.query(`SELECT p.id, p.amount, CASE WHEN p.is_processing THEN 'processing' ELSE p.status::text END AS status, p.method, p.account, p.created_at, u.full_name AS affiliate, u.phone
+      FROM payout_requests p JOIN users u ON u.id = p.affiliate_id WHERE p.status::text = 'pending' ORDER BY p.id`)).rows);
   }));
   app.patch('/api/admin/payouts/:id', ...admin, wrap(async (req, res) => {
     const status = oneOf(req.body.status, ['processing', 'paid', 'rejected'], 'الحالة'), id = int(req.params.id, 'المعرّف', 1);
     const p = await asUser(req.user, async c => {
-      const { rows: [r] } = await c.query('SELECT affiliate_id, amount, status FROM payout_requests WHERE id = $1 FOR UPDATE', [id]);
-      if (!r || !['pending', 'processing'].includes(r.status)) throw bad('طلب السحب غير موجود أو معالج مسبقاً');
-      if (status === 'rejected') await c.query('UPDATE affiliate_balances SET balance = balance + $2 WHERE affiliate_id = $1', [r.affiliate_id, r.amount]);
-      await c.query('UPDATE payout_requests SET status = $2, paid_at = CASE WHEN $3 THEN now() END WHERE id = $1', [id, status, status === 'paid']);
+      const { rows: [r] } = await c.query('SELECT affiliate_id, amount, status::text AS status FROM payout_requests WHERE id = $1 FOR UPDATE', [id]);
+      if (!r || r.status !== 'pending') throw bad('طلب السحب غير موجود أو معالج مسبقاً');
+      if (status === 'processing') {
+        await c.query('UPDATE payout_requests SET is_processing = true WHERE id = $1', [id]);
+      } else {
+        if (status === 'rejected') await c.query('UPDATE affiliate_balances SET balance = balance + $2 WHERE affiliate_id = $1', [r.affiliate_id, r.amount]);
+        await c.query('UPDATE payout_requests SET status = $2, is_processing = false, paid_at = CASE WHEN $3 THEN now() END WHERE id = $1', [id, status, status === 'paid']);
+      }
       return r;
     });
     const m = { processing: 'طلب السحب قيد المعالجة ⏳', paid: 'تم تحويل أرباحك بنجاح ✅', rejected: 'تم رفض طلب السحب وأُعيد المبلغ لمحفظتك' }[status];
