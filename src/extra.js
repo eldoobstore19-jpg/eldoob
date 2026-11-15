@@ -141,6 +141,9 @@ export function mount(app, H) {
     const { rows: [w] } = await pool.query('SELECT available FROM wilayas WHERE code = $1', [code]);
     if (!w) throw bad('الولاية غير موجودة');
     if (!w.available) throw bad('التوصيل غير متوفر حالياً في هذه الولاية');
+    const { rows: [pr] } = await pool.query('SELECT base_price FROM products WHERE id = $1', [int(req.body.product_id, 'المنتج', 1)]);
+    if (!pr) throw bad('المنتج غير موجود');
+    if (!(Number(req.body.resale_price) >= Number(pr.base_price))) throw bad('السعر أقل من سعر المنتج');
     const { rows: list } = await pool.query('SELECT name FROM communes WHERE wilaya_code = $1', [code]);
     if (list.length && !list.some(r => r.name === String(req.body.commune || '').trim())) throw bad('اختر البلدية من القائمة');
     res.on('finish', () => { if (res.statusCode === 201) later(async () => push(await admins(), 'طلب جديد 📦', 'وصل طلب جديد بانتظار المراجعة', '/')); });
