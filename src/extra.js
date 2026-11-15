@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import multer from 'multer';
 import { flushEmails } from './mailer.js';
 
 let webpush = null;
@@ -8,6 +9,32 @@ export function mount(app, H) {
   const { pool, asUser, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf,
     email_, password_, otpHash, token, SECRET, bcrypt, jwt, checkOtp } = H;
   const later = fn => fn().catch(e => console.error('extra:', e.message));
+
+  /* ───── صور الهوية: جدول خاص لا يُعرض علناً، ولا يراه إلا المدير ───── */
+  const ready2 = pool.query(`CREATE TABLE IF NOT EXISTS private_uploads (id uuid PRIMARY KEY, user_id bigint NOT NULL, mime text NOT NULL, data bytea NOT NULL, created_at timestamptz DEFAULT now())`)
+    .then(() => pool.query(`CREATE TABLE IF NOT EXISTS id_documents (user_id bigint PRIMARY KEY, front_id uuid NOT NULL, back_id uuid NOT NULL, created_at timestamptz DEFAULT now())`))
+    .catch(e => console.error('id tables:', e.message));
+  const IMG = { 'image/jpeg': 1, 'image/png': 1, 'image/webp': 1 };
+  const idUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024, files: 2 },
+    fileFilter: (_r, f, cb) => cb(IMG[f.mimetype] ? null : bad('صور JPG أو PNG أو WEBP فقط'), !!IMG[f.mimetype]) });
+  app.post('/api/me/id-docs', ...affiliate, idUpload.fields([{ name: 'front', maxCount: 1 }, { name: 'back', maxCount: 1 }]), wrap(async (req, res) => {
+    await ready2;
+    const f = req.files && req.files.front && req.files.front[0], b = req.files && req.files.back && req.files.back[0];
+    if (!f || !b) throw bad('أرفق صورة وجه البطاقة وظهرها');
+    const save = async file => { const id = crypto.randomUUID(); await pool.query('INSERT INTO private_uploads (id, user_id, mime, data) VALUES ($1, $2, $3, $4)', [id, req.user.id, file.mimetype, file.buffer]); return id; };
+    const fi = await save(f), bi = await save(b);
+    const { rows: [old] } = await pool.query('SELECT front_id, back_id FROM id_documents WHERE user_id = $1', [req.user.id]);
+    await pool.query('INSERT INTO id_documents (user_id, front_id, back_id) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET front_id = $2, back_id = $3, created_at = now()', [req.user.id, fi, bi]);
+    if (old) await pool.query('DELETE FROM private_uploads WHERE id = ANY($1::uuid[])', [[old.front_id, old.back_id]]);
+    res.status(201).json({ ok: true });
+  }));
+  app.get('/api/admin/files/:id', ...admin, wrap(async (req, res) => {
+    await ready2;
+    if (!/^[0-9a-f-]{36}$/.test(req.params.id)) throw bad('غير موجود', 404);
+    const { rows: [f] } = await pool.query('SELECT mime, data FROM private_uploads WHERE id = $1', [req.params.id]);
+    if (!f) throw bad('غير موجود', 404);
+    res.set({ 'Content-Type': f.mime, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }).send(f.data);
+  }));
 
   /* ───── الإشعارات: المفاتيح تُولَّد وتُحفظ في القاعدة تلقائياً ───── */
   let vapid = null;
@@ -129,19 +156,24 @@ export function mount(app, H) {
   });
 
   /* ───── السحب: جاري المعالجة / تم السحب / مرفوض ───── */
-  app.post('/api/payouts', affiliate, (_req, res, next) => {
+  app.post('/api/payouts', affiliate, wrap(async (req, res, next) => {
+    await ready2;
+    if (!(await pool.query('SELECT 1 FROM id_documents WHERE user_id = $1', [req.user.id])).rowCount) throw bad('يجب رفع صورتي بطاقة الهوية قبل أول سحب');
     res.on('finish', () => { if (res.statusCode === 201) later(async () => push(await admins(), 'طلب سحب جديد 💸', 'وصل طلب سحب بانتظار المعالجة', '/')); });
     next();
-  });
+  }));
   app.get('/api/wallet', auth, wrap(async (req, res) => {
     const { rows: [w] } = await pool.query('SELECT balance, total_earned, pending_balance FROM affiliate_balances WHERE affiliate_id = $1', [req.user.id]);
     const { rows: payouts } = await pool.query(`SELECT id, amount, CASE WHEN is_processing AND status::text = 'pending' THEN 'processing' ELSE status::text END AS status, method, account, created_at, paid_at
       FROM payout_requests WHERE affiliate_id = $1 ORDER BY id DESC LIMIT 20`, [req.user.id]);
-    res.json({ balance: w?.balance || 0, total_earned: w?.total_earned || 0, pending_balance: w?.pending_balance || 0, payouts });
+    await ready2;
+    const id_ok = (await pool.query('SELECT 1 FROM id_documents WHERE user_id = $1', [req.user.id])).rowCount > 0;
+    res.json({ balance: w?.balance || 0, total_earned: w?.total_earned || 0, pending_balance: w?.pending_balance || 0, payouts, id_ok });
   }));
   app.get('/api/admin/payouts', ...admin, wrap(async (_req, res) => {
-    res.json((await pool.query(`SELECT p.id, p.amount, CASE WHEN p.is_processing THEN 'processing' ELSE p.status::text END AS status, p.method, p.account, p.created_at, u.full_name AS affiliate, u.phone
-      FROM payout_requests p JOIN users u ON u.id = p.affiliate_id WHERE p.status::text = 'pending' ORDER BY p.id`)).rows);
+    await ready2;
+    res.json((await pool.query(`SELECT p.id, p.amount, CASE WHEN p.is_processing THEN 'processing' ELSE p.status::text END AS status, p.method, p.account, p.created_at, u.full_name AS affiliate, u.phone, d.front_id, d.back_id
+      FROM payout_requests p JOIN users u ON u.id = p.affiliate_id LEFT JOIN id_documents d ON d.user_id = p.affiliate_id WHERE p.status::text = 'pending' ORDER BY p.id`)).rows);
   }));
   app.patch('/api/admin/payouts/:id', ...admin, wrap(async (req, res) => {
     const status = oneOf(req.body.status, ['processing', 'paid', 'rejected'], 'الحالة'), id = int(req.params.id, 'المعرّف', 1);
