@@ -24,12 +24,12 @@ const PM_IN={flexy:'Flexy',baridimob:'BaridiMob',direct:'Direct'},PS_IN={pending
 const ST_IN={pending:'Pending',shipped:'Shipped',delivered:'Delivered',cancelled:'Cancelled',retour:'Retour'};
 const mP=p=>({id:p.id,t:p.title,ct:p.commercial_title||p.title,base:p.base_price,sug:p.suggested_price||p.base_price,stock:p.stock_qty,d:p.description||'',imgs:p.images||[],e:'📦',active:p.is_active});
 const mO=o=>({id:o.id,cust:o.customer_name,phone:o.customer_phone,wil:o.wilaya,com:o.commune,adr:o.address,dt:o.delivery_type,pt:o.product,qty:o.quantity,price:o.resale_price,base:o.base_price,fee:o.delivery_fee,tot:o.total_to_collect,st:ST_IN[o.status]||o.status,an:o.affiliate});
-const mW=p=>({id:p.id,a:p.amount,m:PM_IN[p.method]||p.method,st:PS_IN[p.status]||p.status,an:p.affiliate||'',ph:p.phone||'',pa:p.account,d:new Date(p.created_at).toLocaleDateString('ar-DZ')});
+const mW=p=>({id:p.id,a:p.amount,m:PM_IN[p.method]||p.method,st:PS_IN[p.status]||p.status,an:p.affiliate||'',ph:p.phone||'',pa:p.account,d:new Date(p.created_at).toLocaleDateString('ar-DZ'),fid:p.front_id,bid:p.back_id});
 async function load(){
  const adm=isAdm(),needGeo=!isAdm()&&!Object.keys(S.G.w).length;
  const [P,O,x,geo]=await Promise.all([api('GET','/products'),api('GET','/orders'),api('GET',adm?'/admin/payouts':'/wallet'),needGeo?api('GET','/geo'):null]);
  S.P=P.map(mP).filter(p=>p.active);S.O=O.map(mO);
- if(adm)S.W=x.map(mW);else{S.W=x.payouts.map(mW);S.wallet={b:x.balance,e:x.total_earned,p:x.pending_balance}}
+ if(adm)S.W=x.map(mW);else{S.W=x.payouts.map(mW);S.wallet={b:x.balance,e:x.total_earned,p:x.pending_balance};S.idOk=!!x.id_ok}
  if(geo){geo.wilayas.forEach(w=>S.G.w[w.code]={c:w.code,n:w.name_ar,desk:w.desk_fee,home:w.home_fee,av:w.available});S.G.c=geo.communes}}
 async function boot(keep){
  const m=await api('GET','/me');
@@ -71,7 +71,7 @@ function render(){
  $('#av').innerHTML=u.av?`<img src="${esc(u.av)}" alt="">`:(isAdm()?'🛡️':'👤');$('#nm').textContent=u.name+(isAdm()?' — مدير':' — مسوّق');
  $('#cm').hidden=isAdm();if(isAff())$('#cv').textContent=fmt(S.wallet.b);
  $('#nav').innerHTML=NAV[u.role].map(([k,i,l])=>`<button data-n="${k}" class="${(S.tab==k||(k=='more'&&['deliv','help','tuts','acct'].includes(S.tab)))?'on':''}"><span>${i}</span>${l}${k=='apay'&&reqN()?` (${reqN()})`:''}</button>`).join('');
- const V={home:()=>S.P.length?`<div class="grid">${S.P.map(card).join('')}</div>`:empty('لا توجد منتجات حالياً'),more,acct,tuts,search,help,deliv,profile,orders,wallet,aord,apay,aprod};
+ const V={home:()=>S.P.length?`<div class="grid">${S.P.map(card).join('')}</div>`:empty('لا توجد منتجات حالياً'),more,acct,tuts,search,help,deliv,profile,orders,wallet,aord,apay,aprod,photo:photoV};
  const adminTabs=['aord','apay','aprod'];
  if(adminTabs.includes(S.tab)&&!isAdm())S.tab='home';
  if(isAdm()&&!adminTabs.includes(S.tab))S.tab='aord';
@@ -95,7 +95,7 @@ const profile=()=>{const u=S.user,dn=S.O.filter(o=>o.st=='Delivered').length;
 <div class="card"><div class="o" style="border:0"><span class="mute">📞 رقم الهاتف</span><span dir="ltr">${esc(u.phone)}</span></div><div class="o" style="border:0"><span class="mute">✉️ البريد</span><span><span dir="ltr">${esc(u.email)}</span> <span class="vok">✔ موثّق</span></span></div></div>
 <div class="stat"><div><b>${fmt(S.wallet.e)}</b><span>إجمالي الأرباح</span></div><div><b>${fmt(S.wallet.p)}</b><span>قيد الانتظار</span></div><div><b>${dn}</b><span>طلبات مسلّمة</span></div></div>
 <button class="btn gh" data-out="1">تسجيل الخروج</button>`};
-const acct=()=>{const u=S.user;return`${pushCard()}<div class="card"><h3>الصورة الشخصية</h3><div style="display:flex;align-items:center;gap:12px"><div class="av" style="width:64px;height:64px;font-size:30px">${u.av?`<img src="${esc(u.av)}" alt="">`:'👤'}</div><label style="margin:0;flex:1">اختر صورة<input id="avf" type="file" accept="image/*"></label></div></div>
+const acct=()=>{const u=S.user;return`${pushCard()}<div class="card"><h3>الصورة الشخصية</h3><div style="display:flex;align-items:center;gap:12px"><div class="av" style="width:64px;height:64px;font-size:30px">${u.av?`<img src="${esc(u.av)}" alt="">`:'👤'}</div><button class="btn dk" data-act="pickavatar" style="flex:1">📷 تغيير الصورة من المعرض</button></div></div>
 <div class="card"><h3>بياناتي</h3><label>الاسم الكامل<input id="an" value="${esc(u.name)}"></label><label>اسم المستخدم (فريد)<input id="au" dir="ltr" autocapitalize="none" value="${esc(u.username)}"></label><label>رقم الهاتف (للسحب بفليكسي)<input id="ap" inputmode="tel" value="${esc(u.phone)}"></label><label>البريد الإلكتروني (موثّق)<input value="${esc(u.email)}" readonly dir="ltr"></label>
 <label>وسيلة الدفع المعتمدة<select id="pm2"><option value="flexy" ${u.pm=='Flexy'?'selected':''}>فليكسي</option><option value="baridimob" ${u.pm=='BaridiMob'?'selected':''}>بريدي موب</option></select></label><label>رقم الحساب (فليكسي أو RIP)<input id="pa2" inputmode="numeric" value="${esc(u.pa)}"></label><button class="btn" id="sva">حفظ التعديلات</button></div>
 <div class="card"><h3>تغيير كلمة السر</h3><label>كلمة السر الحالية<input id="pw0" type="password"></label><label>كلمة السر الجديدة (8 أحرف فأكثر)<input id="pw1" type="password"></label><label>تأكيد كلمة السر الجديدة<input id="pw2" type="password"></label><button class="btn dk" id="chp">تغيير كلمة السر</button></div>`};
@@ -123,7 +123,7 @@ async function doReg(){const n=$('#rn').value.trim(),us=$('#ru').value.trim().to
  if(!n)return bad('أدخل الاسم الكامل');if(!RX.u.test(us))return bad('اسم المستخدم: 3 إلى 20 حرفاً (a-z وأرقام و _ فقط)');if(!RX.p.test(p))return bad('رقم هاتف جزائري غير صالح');if(!RX.e.test(e))return bad('بريد إلكتروني غير صالح');if(w.length<8)return bad('كلمة المرور 8 أحرف على الأقل');
  const body={full_name:n,username:us,phone:p,email:e,password:w};
  await api('POST','/auth/register/start',body);S.rd=body;S.scr='otp';render();toast('أرسلنا رمز التأكيد إلى بريدك','ok')}
-async function doOtp(){const d=await api('POST','/auth/register/verify',{email:S.rd.email,code:$('#oc').value.trim()});saveToken(d.token);S.rd=null;await boot();toast('تم إنشاء حسابك','ok')}
+async function doOtp(){const d=await api('POST','/auth/register/verify',{email:S.rd.email,code:$('#oc').value.trim()});saveToken(d.token);S.rd=null;await boot();S.tab='photo';render();toast('تم إنشاء حسابك','ok')}
 async function sendCode(kind,email,next){
  if(!RX.e.test(email))return toast('بريد إلكتروني غير صالح','bad');
  await api('POST',kind=='forgot'?'/auth/forgot':'/auth/login-code/start',{email});
@@ -144,7 +144,9 @@ async function doAvatar(f){if(!f)return;const fd=new FormData();fd.append('avata
 
 /* ===== المسوّق: الطلبات والمحفظة ===== */
 const orders=()=>S.O.length?S.O.map(o=>`<div class="card"><div class="o" style="border:0;padding:0"><b>${esc(o.pt)} × ${o.qty}</b>${tag(o.st)}</div><div class="mute">${esc(o.cust)} — ${esc(o.wil)} — ${o.dt=='home'?'للمنزل':'للمكتب'}</div><div class="o" style="border:0;padding:4px 0 0"><span>سعر البيع: ${fmt(o.price)}</span><b style="color:var(--ok)">ربحك: ${fmt(pro(o))}</b></div></div>`).join(''):empty('لا توجد طلبات بعد. اختر منتجاً وابدأ البيع.');
-const wallet=()=>`<div class="card"><h3>رصيدي</h3><div class="pr" style="font-size:24px">${fmt(S.wallet.b)}</div><div class="mute">أرباح قيد الانتظار: ${fmt(S.wallet.p)}</div><label style="margin-top:10px">المبلغ المطلوب سحبه (الحد الأدنى 1000)<input id="wa" inputmode="numeric" placeholder="مثال: 3000"></label><button class="btn" id="wgo">طلب سحب (${S.user.pm=='Flexy'?'فليكسي':'بريدي موب'})</button></div><div class="card"><h3>سجل السحب</h3>${S.W.length?S.W.map(w=>`<div class="o"><span>${fmt(w.a)}<div class="mute">${w.d}</div></span>${tag(w.st)}</div>`).join(''):empty('لا توجد عمليات سحب')}</div>`;
+const prevBox=(src,label,act)=>`<div style="flex:1;text-align:center"><div class="im" style="border-radius:14px;aspect-ratio:1.5">${src?`<img src="${src}" alt="">`:'🪪'}</div><button class="btn sm dk" data-act="${act}" style="margin-top:6px">${label}</button></div>`;
+const idCard=()=>`<div class="card"><h3>توثيق الهوية</h3><div class="mute" style="margin-bottom:10px">مطلوب مرة واحدة قبل أول سحب: صورة واضحة لوجه بطاقة الهوية وظهرها. تُحفظ بسرية ولا يراها إلا المدير.</div><div style="display:flex;gap:10px">${prevBox(S.idfp,'وجه البطاقة','pickid:front')}${prevBox(S.idbp,'ظهر البطاقة','pickid:back')}</div><button class="btn" id="ids" style="margin-top:12px;${S.idf&&S.idb?'':'opacity:.5'}">رفع الصور</button></div>`;
+const wallet=()=>`<div class="card"><h3>رصيدي</h3><div class="pr" style="font-size:24px">${fmt(S.wallet.b)}</div><div class="mute">أرباح قيد الانتظار: ${fmt(S.wallet.p)}</div>${S.idOk?`<label style="margin-top:10px">المبلغ المطلوب سحبه (الحد الأدنى 1000)<input id="wa" inputmode="numeric" placeholder="مثال: 3000"></label><button class="btn" id="wgo">طلب سحب (${S.user.pm=='Flexy'?'فليكسي':'بريدي موب'})</button>`:'<div class="mute" style="margin-top:8px">أكمل توثيق الهوية أدناه لتتمكن من السحب.</div>'}</div>${S.idOk?'':idCard()}<div class="card"><h3>سجل السحب</h3>${S.W.length?S.W.map(w=>`<div class="o"><span>${fmt(w.a)}<div class="mute">${w.d}</div></span>${tag(w.st)}</div>`).join(''):empty('لا توجد عمليات سحب')}</div>`;
 const communeField=c=>{const l=S.G.c[c];return l&&l.length?`<select id="ocm">${l.map(n=>`<option>${esc(n)}</option>`).join('')}</select>`:`<input id="ocm" placeholder="اكتب اسم البلدية">`};
 function productSheet(id){const p=pid(id);if(!p||!p.stock)return;
  const ws=Object.values(S.G.w),first=(ws.find(w=>w.av)||ws[0]||{c:16}).c;
@@ -168,13 +170,25 @@ async function doPayout(){const a=+$('#wa').value;
 
 /* ===== المدير ===== */
 const aord=()=>pushCard()+(S.O.length?S.O.map(o=>`<div class="card"><div class="o" style="border:0;padding:0"><b>#${o.id} ${esc(o.pt)} × ${o.qty}</b>${tag(o.st)}</div><div class="mute">${esc(o.cust)} — <span dir="ltr">${esc(o.phone)}</span></div><div class="mute">${esc(o.wil)} — ${esc(o.com)} — ${esc(o.adr)} — ${o.dt=='home'?'منزل':'مكتب'}</div><div class="mute">المسوّق: ${esc(o.an)} — يُحصَّل: ${fmt(o.tot||0)}</div><select data-os="${o.id}">${OST.map(k=>`<option value="${k}" ${k==o.st?'selected':''}>${ST[k]}</option>`).join('')}</select></div>`).join(''):empty('لا توجد طلبات'));
-const apay=()=>S.W.length?S.W.map(w=>`<div class="card"><div class="o" style="border:0;padding:0"><b>${fmt(w.a)}</b>${tag(w.st)}</div><div class="mute">${esc(w.an)} — <span dir="ltr">${esc(w.ph)}</span> — ${w.m=='Flexy'?'فليكسي':'بريدي موب'}: <span dir="ltr">${esc(w.pa)}</span> — ${w.d}</div><div style="margin-top:8px">${w.st=='Requested'?`<button class="btn sm dk" data-pa="${w.id}:processing">جاري المعالجة</button> `:''}<button class="btn sm" data-pa="${w.id}:paid">تم السحب</button> <button class="btn sm gh" data-pa="${w.id}:rejected">رفض</button></div></div>`).join(''):empty('لا توجد طلبات سحب');
-const aprod=()=>`<button class="btn" data-addp="1" style="margin-bottom:12px">＋ إضافة منتج</button>`+(S.P.length?S.P.map(p=>`<div class="card"><div class="o" style="border:0;padding:0"><b>${esc(p.t)}</b><span class="mute">مخزون: ${p.stock}</span></div><div class="mute">جملة ${fmt(p.base)} — مقترح ${fmt(p.sug)}</div><button class="btn sm gh" data-dp="${p.id}" style="margin-top:6px">إخفاء</button></div>`).join(''):empty('لا توجد منتجات'));
-const prodSheet=()=>openSheet(`<h3>منتج جديد</h3><label>الاسم<input id="pt1"></label><label>سعر الجملة<input id="pt2" type="number"></label><label>السعر المقترح<input id="pt3" type="number"></label><label>المخزون<input id="pt4" type="number"></label><label>الوصف<textarea id="pt5" rows="3"></textarea></label><label>صورة<input id="pt6" type="file" accept="image/*"></label><button class="btn" id="pgo">حفظ</button><button class="btn gh" data-c="1" style="margin-top:8px">إلغاء</button>`);
-async function doAddProd(){const t=$('#pt1').value.trim(),b=+$('#pt2').value,s=+$('#pt3').value||b,k=+$('#pt4').value,f=$('#pt6').files[0];
+const apay=()=>S.W.length?S.W.map(w=>`<div class="card"><div class="o" style="border:0;padding:0"><b>${fmt(w.a)}</b>${tag(w.st)}</div><div class="mute">${esc(w.an)} — <span dir="ltr">${esc(w.ph)}</span> — ${w.m=='Flexy'?'فليكسي':'بريدي موب'}: <span dir="ltr">${esc(w.pa)}</span> — ${w.d}</div><div style="margin-top:8px">${w.fid?`<button class="btn sm dk" data-idv="${w.fid}:${w.bid}">🪪 عرض الهوية</button> `:''}${w.st=='Requested'?`<button class="btn sm dk" data-pa="${w.id}:processing">جاري المعالجة</button> `:''}<button class="btn sm" data-pa="${w.id}:paid">تم السحب</button> <button class="btn sm gh" data-pa="${w.id}:rejected">رفض</button></div></div>`).join(''):empty('لا توجد طلبات سحب');
+const aprod=()=>`<button class="btn" data-addp="1" style="margin-bottom:12px">＋ إضافة منتج</button>`+(S.P.length?S.P.map(p=>`<div class="card"><div style="display:flex;gap:10px;align-items:center">${p.imgs[0]?`<img src="${esc(p.imgs[0])}" alt="" style="width:56px;height:56px;border-radius:12px;object-fit:cover">`:'<div class="av" style="border-radius:12px;width:56px;height:56px">📦</div>'}<div style="flex:1"><b>${esc(p.t)}</b><div class="mute">جملة ${fmt(p.base)} — مخزون ${p.stock} — ${p.imgs.length} صور</div></div></div><div style="margin-top:8px"><button class="btn sm dk" data-ep="${p.id}">تعديل</button> <button class="btn sm gh" data-dp="${p.id}">إخفاء</button></div></div>`).join(''):empty('لا توجد منتجات'));
+const imgsGrid=()=>`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">${S.pi.map((m,i)=>`<div style="position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;background:var(--card2)"><img src="${esc(m.prev||m.url)}" alt="" style="width:100%;height:100%;object-fit:cover"><button data-ri="${i}" style="position:absolute;top:3px;inset-inline-start:3px;width:24px;height:24px;border-radius:50%;border:0;background:#000b;color:#fff;cursor:pointer">✕</button></div>`).join('')}${S.pi.length<8?`<button data-act="addimgs" style="aspect-ratio:1;border-radius:12px;border:1px dashed var(--ac);background:none;color:var(--ac2);font-size:26px;cursor:pointer">＋</button>`:''}</div>`;
+function prodSheet(p){S.ep=p?p.id:null;S.pi=p?p.imgs.map(u=>({url:u})):[];
+ openSheet(`<h3>${p?'تعديل المنتج':'منتج جديد'}</h3><label>الاسم<input id="pt1" value="${esc(p?p.t:'')}"></label><label>سعر الجملة<input id="pt2" type="number" value="${p?p.base:''}"></label><label>السعر المقترح<input id="pt3" type="number" value="${p?p.sug:''}"></label><label>المخزون<input id="pt4" type="number" value="${p?p.stock:''}"></label><label>الوصف<textarea id="pt5" rows="3">${esc(p?p.d:'')}</textarea></label><div class="mute" style="margin-bottom:6px">الصور (حتى 8، الأولى هي الرئيسية)</div><div id="pgrid">${imgsGrid()}</div><button class="btn" id="pgo" style="margin-top:14px">حفظ</button><button class="btn gh" data-c="1" style="margin-top:8px">إلغاء</button>`)}
+async function doAddProd(){const t=$('#pt1').value.trim(),b=+$('#pt2').value,s=+$('#pt3').value||b,k=+$('#pt4').value;
  if(!t||!(b>=1)||!(k>=0))return toast('أكمل الاسم والسعر والمخزون','bad');
- const images=f?[await upImg(f)]:[];
- await api('POST','/products',{title:t,base_price:b,suggested_price:s,stock_qty:k,description:$('#pt5').value.trim(),images});closeSheet();await refresh('تمت الإضافة')}
+ const images=[];for(const m of S.pi)images.push(m.file?await upImg(m.file):m.url);
+ const body={title:t,base_price:b,suggested_price:s,stock_qty:k,description:$('#pt5').value.trim(),images},edit=S.ep;
+ if(edit)await api('PATCH','/products/'+edit,body);else await api('POST','/products',body);
+ closeSheet();await refresh(edit?'تم حفظ التعديلات':'تمت الإضافة')}
+
+/* ===== الصور: اختيار من المعرض، الصورة الشخصية، الهوية ===== */
+const pickImages=multi=>new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='image/*';i.multiple=!!multi;i.style.display='none';document.body.appendChild(i);i.onchange=()=>{res([...i.files]);i.remove()};i.addEventListener('cancel',()=>{res([]);i.remove()});i.click()});
+const fileBlob=async(f,max,sq)=>toBlob(await shrink(f,max,sq));
+const authImg=async id=>{const r=await fetch('/api/admin/files/'+id,{headers:{Authorization:'Bearer '+TOKEN}});if(!r.ok)throw new Error('تعذّر تحميل الصورة');return URL.createObjectURL(await r.blob())};
+const photoV=()=>`<div style="padding:16px 4px;text-align:center">${logo(64)}<h2 style="margin:6px 0 4px">أضف صورتك الشخصية</h2><p class="mute" style="margin:0 0 14px">تساعد صورتك الإدارة على التعرف عليك.</p><div class="av" style="width:150px;height:150px;margin:0 auto 14px;font-size:64px">${S.pp?`<img src="${S.pp}" alt="">`:'👤'}</div><button class="btn dk" data-act="pickphoto">📷 اختيار صورة من المعرض</button><button class="btn" id="phs" style="margin-top:10px;${S.pf?'':'opacity:.5'}">حفظ ومتابعة</button><button class="link" data-n="home" style="margin-top:10px">تخطي الآن</button></div>`;
+async function doPhoto(){if(!S.pf)return toast('اختر صورة أولاً','bad');const fd=new FormData();fd.append('avatar',await fileBlob(S.pf,256,true),'a.jpg');await api('POST','/me/avatar',fd);S.pf=null;S.pp='';await boot(true);go('home');toast('تم حفظ صورتك','ok')}
+async function doIdDocs(){if(!S.idf||!S.idb)return toast('اختر صورة وجه البطاقة وظهرها','bad');const fd=new FormData();fd.append('front',await fileBlob(S.idf,1400,false),'f.jpg');fd.append('back',await fileBlob(S.idb,1400,false),'b.jpg');await api('POST','/me/id-docs',fd);S.idf=S.idb=null;S.idfp=S.idbp='';await refresh('تم رفع الهوية، يمكنك الآن طلب السحب')}
 
 /* ===== الأحداث ===== */
 document.addEventListener('click',e=>{const t=e.target,c=s=>t.closest(s);let x;
@@ -187,12 +201,21 @@ document.addEventListener('click',e=>{const t=e.target,c=s=>t.closest(s);let x;
  if(x=c('[data-pa]')){const[i,s]=x.dataset.pa.split(':');return run(async()=>{await api('PATCH','/admin/payouts/'+i,{status:s});await refresh('تم التحديث')})}
  if(x=c('[data-dp]'))return run(async()=>{await api('DELETE','/products/'+x.dataset.dp);await refresh('تم الإخفاء')});
  if(c('[data-addp]'))return prodSheet();
+ if(x=c('[data-ep]')){const p=pid(x.dataset.ep);if(p)prodSheet(p);return}
+ if(x=c('[data-ri]')){S.pi.splice(+x.dataset.ri,1);$('#pgrid').innerHTML=imgsGrid();return}
+ if(x=c('[data-idv]')){const[f,b]=x.dataset.idv.split(':');return run(async()=>{const[u1,u2]=await Promise.all([authImg(f),authImg(b)]);openSheet(`<h3>بطاقة الهوية</h3><img src="${u1}" alt="" style="width:100%;border-radius:14px;margin-bottom:10px"><img src="${u2}" alt="" style="width:100%;border-radius:14px"><button class="btn gh" data-c="1" style="margin-top:12px">إغلاق</button>`)})}
+ if(x=c('[data-act]')){const a=x.dataset.act;return run(async()=>{
+  if(a=='pickphoto'){const f=(await pickImages(false))[0];if(f){S.pf=f;S.pp=URL.createObjectURL(f);render()}}
+  else if(a=='pickavatar'){const f=(await pickImages(false))[0];if(f)await doAvatar(f)}
+  else if(a.startsWith('pickid:')){const k=a.split(':')[1],f=(await pickImages(false))[0];if(f){if(k=='front'){S.idf=f;S.idfp=URL.createObjectURL(f)}else{S.idb=f;S.idbp=URL.createObjectURL(f)}render()}}
+  else if(a=='addimgs'){const fs=await pickImages(true);fs.slice(0,8-S.pi.length).forEach(f=>S.pi.push({file:f,prev:URL.createObjectURL(f)}));$('#pgrid').innerHTML=imgsGrid()}
+ })}
  if(c('#cm'))return go('wallet');
  if(c('#tt')&&isAff())return go('profile');
  const id=(c('button[id]')||{}).id,A={cfo:logout,lgo:()=>run(doLogin),rgo:()=>run(doReg),ogo:()=>run(doOtp),ors:()=>run(async()=>{await api('POST','/auth/register/start',S.rd);toast('أُعيد إرسال الرمز','ok')}),
   fgo:()=>run(()=>sendCode('forgot',$('#fe').value.trim().toLowerCase(),'fcode')),fvo:()=>run(doVerifyReset),fro:()=>run(doReset),
   lcs:()=>run(()=>sendCode('login',$('#le').value.trim().toLowerCase(),'lverify')),lcv:()=>run(doLoginCode),
-  chp:()=>run(doChp),sva:()=>run(doSaveAcct),wgo:()=>run(doPayout),ogo2:()=>run(doOrder),pgo:()=>run(doAddProd)};
+  chp:()=>run(doChp),sva:()=>run(doSaveAcct),wgo:()=>run(doPayout),ogo2:()=>run(doOrder),pgo:()=>run(doAddProd),phs:()=>run(doPhoto),ids:()=>run(doIdDocs)};
  if(A[id])A[id]()});
 document.addEventListener('input',e=>{const i=e.target.id;
  if(i=='q'){S.q=e.target.value;res()}
