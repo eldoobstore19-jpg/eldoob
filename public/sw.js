@@ -1,6 +1,6 @@
 self.addEventListener('push', e => {
   let d = {}; try { d = e.data.json(); } catch {}
-  e.waitUntil(self.registration.showNotification(d.title || 'ELDOOB.DZ', { body: d.body || '', icon: '/assets/logo.svg', badge: '/assets/logo.svg', dir: 'rtl', lang: 'ar', data: { url: d.url || '/' } }));
+  e.waitUntil(self.registration.showNotification(d.title || 'ELDOOB.DZ', { body: d.body || '', icon: '/assets/logo-mark.png', badge: '/assets/logo-mark.png', dir: 'rtl', lang: 'ar', data: { url: d.url || '/' } }));
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();
