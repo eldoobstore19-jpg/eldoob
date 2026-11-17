@@ -177,7 +177,6 @@ export function mount(app, H) {
   /* ───── السحب: جاري المعالجة / تم السحب / مرفوض ───── */
   app.post('/api/payouts', affiliate, wrap(async (req, res, next) => {
     await ready2;
-    if (!(await pool.query('SELECT 1 FROM id_documents WHERE user_id = $1', [req.user.id])).rowCount) throw bad('يجب رفع صورتي بطاقة الهوية قبل أول سحب');
     res.on('finish', () => { if (res.statusCode === 201) later(async () => push(await admins(), 'طلب سحب جديد 💸', 'وصل طلب سحب بانتظار المعالجة', '/')); });
     next();
   }));
