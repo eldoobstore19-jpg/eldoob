@@ -315,7 +315,8 @@ document.addEventListener('click',e=>{const t=e.target,c=s=>t.closest(s);let x;
   fgo:()=>run(()=>sendCode('forgot',$('#fe').value.trim().toLowerCase(),'fcode')),fvo:()=>run(doVerifyReset),fro:()=>run(doReset),
   lcs:()=>run(()=>sendCode('login',$('#le').value.trim().toLowerCase(),'lverify')),lcv:()=>run(doLoginCode),
   chp:()=>run(doChp),sva:()=>run(doSaveAcct),wgo:()=>run(doPayout),ogo2:()=>run(doOrder),pgo:()=>run(doAddProd),phs:()=>run(doPhoto),ids:()=>run(doIdDocs)};
- if(A[id])A[id]()});
+ if(A[id]){const b=c('button[id]');if(b.dataset.busy)return;b.dataset.busy=1;const h=b.innerHTML;b.disabled=true;b.textContent='جاري المعالجة…';
+  Promise.resolve(A[id]()).finally(()=>{delete b.dataset.busy;b.disabled=false;b.innerHTML=h})}});
 document.addEventListener('input',e=>{const i=e.target.id;
  if(i=='ru'){e.target.value=e.target.value.toLowerCase().replace(/\s/g,'');unCheck(e.target.value)}
  if(i=='q'){S.q=e.target.value;res()}
