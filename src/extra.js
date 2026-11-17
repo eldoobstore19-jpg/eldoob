@@ -15,6 +15,7 @@ export function mount(app, H) {
   const ready2 = pool.query(`CREATE TABLE IF NOT EXISTS private_uploads (id uuid PRIMARY KEY, user_id bigint NOT NULL, mime text NOT NULL, data bytea NOT NULL, created_at timestamptz DEFAULT now())`)
     .then(() => pool.query(`CREATE TABLE IF NOT EXISTS id_documents (user_id bigint PRIMARY KEY, front_id uuid NOT NULL, back_id uuid NOT NULL, created_at timestamptz DEFAULT now())`))
     .then(() => pool.query('ALTER TABLE payout_requests ADD COLUMN IF NOT EXISTS admin_note text'))
+    .then(() => pool.query('CREATE TABLE IF NOT EXISTS site_settings (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz DEFAULT now())'))
     .catch(e => console.error('id tables:', e.message));
   const IMG = { 'image/jpeg': 1, 'image/png': 1, 'image/webp': 1 };
   const idUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024, files: 2 },
@@ -178,6 +179,57 @@ export function mount(app, H) {
     if (note) later(() => push([row.affiliate_id], 'ELDOOB.DZ', `ملاحظة من الإدارة على طلبك: ${note}`.slice(0, 160), '/'));
     res.json({ ok: true });
   }));
+  /* ───── إعلان المدير لكل المسوّقين ───── */
+  app.get('/api/announcement', auth, wrap(async (_req, res) => {
+    await ready2;
+    const { rows: [r] } = await pool.query("SELECT value, updated_at FROM site_settings WHERE key = 'announcement'");
+    res.json({ text: r ? r.value : '', at: r ? r.updated_at : null });
+  }));
+  app.put('/api/admin/announcement', ...admin, wrap(async (req, res) => {
+    await ready2;
+    const text = String((req.body && req.body.text) || '').trim().slice(0, 400);
+    if (!text) await pool.query("DELETE FROM site_settings WHERE key = 'announcement'");
+    else await pool.query("INSERT INTO site_settings (key, value) VALUES ('announcement', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()", [text]);
+    if (text && req.body.notify === true) later(async () => {
+      const { rows } = await pool.query("SELECT id FROM users WHERE role = 'affiliate' AND is_active");
+      await push(rows.map(r => r.id), 'ELDOOB.DZ', text.slice(0, 140), '/');
+    });
+    res.json({ ok: true });
+  }));
+
+  /* ───── إحصائيات المدير + نسخة احتياطية ───── */
+  app.get('/api/admin/stats', ...admin, wrap(async (_req, res) => {
+    const q = sql => pool.query(sql);
+    const [o, pay, bal, top, aff] = await Promise.all([
+      q(`SELECT count(*) FILTER (WHERE created_at >= date_trunc('day', now())) AS today,
+                count(*) FILTER (WHERE status::text = 'pending') AS pending,
+                count(*) FILTER (WHERE status::text = 'shipped') AS shipped,
+                count(*) FILTER (WHERE status::text = 'delivered') AS delivered,
+                count(*) FILTER (WHERE status::text IN ('cancelled', 'retour')) AS failed,
+                COALESCE(sum(total_to_collect) FILTER (WHERE status::text = 'delivered' AND created_at >= now() - interval '30 days'), 0) AS sales30
+         FROM orders`),
+      q(`SELECT count(*) AS n, COALESCE(sum(amount), 0) AS total FROM payout_requests WHERE status::text = 'pending'`),
+      q(`SELECT COALESCE(sum(balance), 0) AS owed FROM affiliate_balances`),
+      q(`SELECT u.full_name AS name, count(*) AS orders, count(*) FILTER (WHERE o.status::text = 'delivered') AS delivered,
+                COALESCE(sum(o.profit_amount) FILTER (WHERE o.status::text = 'delivered'), 0) AS earned
+         FROM orders o JOIN users u ON u.id = o.affiliate_id GROUP BY u.id, u.full_name ORDER BY earned DESC, orders DESC LIMIT 5`),
+      q(`SELECT count(*) FILTER (WHERE is_active) AS active, count(*) FILTER (WHERE NOT is_active AND rejected_at IS NULL) AS waiting FROM users WHERE role = 'affiliate'`),
+    ]);
+    res.json({ orders: o.rows[0], payouts: pay.rows[0], owed: bal.rows[0].owed, top: top.rows, aff: aff.rows[0] });
+  }));
+  app.get('/api/admin/export', ...admin, wrap(async (_req, res) => {
+    const t = async sql => (await pool.query(sql)).rows;
+    res.json({
+      exported_at: new Date().toISOString(),
+      users: (await t('SELECT * FROM users ORDER BY id')).map(({ password_hash, ...u }) => u),
+      orders: await t('SELECT * FROM orders ORDER BY id'),
+      payout_requests: await t('SELECT * FROM payout_requests ORDER BY id'),
+      affiliate_balances: await t('SELECT * FROM affiliate_balances'),
+      products: await t('SELECT * FROM products ORDER BY id'),
+      wilayas: await t('SELECT * FROM wilayas ORDER BY code'),
+    });
+  }));
+
   app.patch('/api/orders/:id/status', ...admin, (req, res, next) => {
     res.on('finish', () => { if (res.statusCode === 200) later(async () => {
       const { rows: [o] } = await pool.query('SELECT affiliate_id FROM orders WHERE id = $1', [req.params.id]);
