@@ -7,7 +7,7 @@ let webpush = null;
 try { webpush = (await import('web-push')).default; } catch { console.warn('web-push غير مثبّت: الإشعارات معطّلة'); }
 
 export function mount(app, H) {
-  const { pool, asUser, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf,
+  const { pool, asUser, tx, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf,
     email_, password_, otpHash, token, SECRET, bcrypt, jwt, checkOtp } = H;
   const later = fn => fn().catch(e => console.error('extra:', e.message));
 
@@ -195,13 +195,13 @@ export function mount(app, H) {
   }));
   app.patch('/api/admin/payouts/:id', ...admin, wrap(async (req, res) => {
     const status = oneOf(req.body.status, ['processing', 'paid', 'rejected'], 'الحالة'), id = int(req.params.id, 'المعرّف', 1);
-    const p = await asUser(req.user, async c => {
+    const p = await tx(async c => {
       const { rows: [r] } = await c.query('SELECT affiliate_id, amount, status::text AS status FROM payout_requests WHERE id = $1 FOR UPDATE', [id]);
       if (!r || r.status !== 'pending') throw bad('طلب السحب غير موجود أو معالج مسبقاً');
       if (status === 'processing') {
         await c.query('UPDATE payout_requests SET is_processing = true WHERE id = $1', [id]);
       } else {
-        if (status === 'rejected') await c.query('UPDATE affiliate_balances SET balance = balance + $2 WHERE affiliate_id = $1', [r.affiliate_id, r.amount]);
+        if (status === 'rejected') { const u = await c.query('UPDATE affiliate_balances SET balance = balance + $2 WHERE affiliate_id = $1', [r.affiliate_id, r.amount]); if (u.rowCount !== 1) throw bad('تعذّرت إعادة المبلغ إلى المحفظة', 500); }
         await c.query('UPDATE payout_requests SET status = $2, is_processing = false, paid_at = CASE WHEN $3 THEN now() END WHERE id = $1', [id, status, status === 'paid']);
       }
       return r;
