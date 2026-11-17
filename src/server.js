@@ -34,7 +34,11 @@ app.use(helmet({
 app.use(express.json({ limit: '100kb' }));
 app.get('/healthz', (_req, res) => res.send('ok'));
 app.use('/api', (req, res, next) => { if (req.method !== 'GET') res.on('finish', () => flushEmails().catch(() => {})); next(); });
-app.use(express.static('public', { maxAge: '1h' }));
+app.use(express.static('public', {
+  maxAge: '1h',
+  // ملفات الصفحة والسكربت تُتحقَّق من جدّتها في كل مرة، فلا تبقى نسخة قديمة عالقة في المتصفح
+  setHeaders: (res, p) => { if (/\.(html|js)$/.test(p)) res.set('Cache-Control', 'no-cache'); },
+}));
 
 app.get('/uploads/:name', async (req, res, next) => {
   try {
@@ -51,6 +55,7 @@ const int = (v, name, min = 0) => { const n = Number(v); if (!Number.isInteger(n
 const str = (v, name, max = 200) => { if (typeof v !== 'string' || !v.trim() || v.length > max) throw bad(`${name} مطلوب`); return v.trim(); };
 const oneOf = (v, list, name) => { if (!list.includes(v)) throw bad(`${name} غير صالح`); return v; };
 const opt = (v, f) => (v === undefined ? null : f(v));
+const payAcct = (m, a) => { a = String(a).replace(/\s/g, ''); if (m === 'flexy' && !/^0[567]\d{8}$/.test(a)) throw bad('رقم فليكسي غير صالح (مثال: 0550000000)'); if (m === 'baridimob' && !/^\d{20}$/.test(a)) throw bad('رقم RIP يجب أن يكون 20 رقماً بالضبط'); return a.slice(0, 40); };
 
 const auth = wrap(async (req, _res, next) => {
   const token = (req.headers.authorization || '').replace(/^Bearer /, '');
@@ -136,7 +141,7 @@ app.patch('/api/me', auth, wrap(async (req, res) => {
     `UPDATE users SET full_name = COALESCE($2, full_name), username = COALESCE($3, username), phone = COALESCE($4, phone),
        payout_method = COALESCE($5, payout_method), payout_account = COALESCE($6, payout_account) WHERE id = $1`,
     [req.user.id, opt(b.full_name, v => str(v, 'الاسم', 100)), opt(b.username, username_), opt(b.phone, phone_),
-     opt(b.payout_method, v => oneOf(v, ['flexy', 'baridimob', 'direct'], 'طريقة الدفع')), opt(b.payout_account, v => str(v, 'حساب الدفع', 40))]);
+     opt(b.payout_method, v => oneOf(v, ['flexy', 'baridimob', 'direct'], 'طريقة الدفع')), opt(b.payout_account, v => { const x = str(v, 'حساب الدفع', 40); return b.payout_method ? payAcct(b.payout_method, x) : x; })]);
   res.json({ ok: true });
 }));
 
@@ -195,7 +200,7 @@ app.post('/api/products', ...admin, wrap(async (req, res) => {
     const { rows: [r] } = await c.query(
       `INSERT INTO products (title, commercial_title, base_price, suggested_price, stock_qty, hook, description)
        VALUES ($1, $1, $2, $3, $4, $5, $6) RETURNING id`,
-      [title, int(b.base_price, 'سعر الجملة', 1), int(b.suggested_price, 'السعر المقترح', 1), int(b.stock_qty, 'الكمية'), String(b.hook || '').slice(0, 500), String(b.description || '').slice(0, 5000)]);
+      [title, int(b.base_price, 'سعر المنتج', 1), int(b.suggested_price, 'السعر المقترح', 1), int(b.stock_qty, 'الكمية'), String(b.hook || '').slice(0, 500), String(b.description || '').slice(0, 5000)]);
     await setImages(c, r.id, list);
     return r.id;
   });
@@ -211,7 +216,7 @@ app.patch('/api/products/:id', ...admin, wrap(async (req, res) => {
       `UPDATE products SET title = COALESCE($2, title), commercial_title = COALESCE($2, commercial_title),
          base_price = COALESCE($3, base_price), suggested_price = COALESCE($4, suggested_price), stock_qty = COALESCE($5, stock_qty),
          hook = COALESCE($6, hook), description = COALESCE($7, description) WHERE id = $1`,
-      [id, title, opt(b.base_price, v => int(v, 'سعر الجملة', 1)), opt(b.suggested_price, v => int(v, 'السعر المقترح', 1)),
+      [id, title, opt(b.base_price, v => int(v, 'سعر المنتج', 1)), opt(b.suggested_price, v => int(v, 'السعر المقترح', 1)),
        opt(b.stock_qty, v => int(v, 'الكمية')), opt(b.hook, v => String(v).slice(0, 500)), opt(b.description, v => String(v).slice(0, 5000))]);
     if (list) await setImages(c, id, list);
   });
@@ -300,6 +305,11 @@ app.get('/api/wallet', auth, wrap(async (req, res) => {
 
 app.post('/api/payouts', affiliate, wrap(async (req, res) => {
   const amount = int(req.body.amount, 'المبلغ', 1000);
+  if (req.body.method !== undefined) {
+    const m = oneOf(req.body.method, ['flexy', 'baridimob'], 'طريقة السحب');
+    const a = payAcct(m, str(req.body.account, 'رقم الحساب', 40));
+    await pool.query('UPDATE users SET payout_method = $2, payout_account = $3 WHERE id = $1', [req.user.id, m, a]);
+  }
   const row = await asUser(req.user, async c => {
     const { rows: [w] } = await c.query('SELECT balance, payout_method, payout_account FROM affiliate_balances ab JOIN users u ON u.id = ab.affiliate_id WHERE ab.affiliate_id = $1 FOR UPDATE', [req.user.id]);
     if (!w || w.balance < amount) throw bad('رصيدك غير كافٍ', 400);
