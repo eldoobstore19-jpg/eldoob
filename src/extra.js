@@ -14,6 +14,7 @@ export function mount(app, H) {
   /* ───── صور الهوية: جدول خاص لا يُعرض علناً، ولا يراه إلا المدير ───── */
   const ready2 = pool.query(`CREATE TABLE IF NOT EXISTS private_uploads (id uuid PRIMARY KEY, user_id bigint NOT NULL, mime text NOT NULL, data bytea NOT NULL, created_at timestamptz DEFAULT now())`)
     .then(() => pool.query(`CREATE TABLE IF NOT EXISTS id_documents (user_id bigint PRIMARY KEY, front_id uuid NOT NULL, back_id uuid NOT NULL, created_at timestamptz DEFAULT now())`))
+    .then(() => pool.query('ALTER TABLE payout_requests ADD COLUMN IF NOT EXISTS admin_note text'))
     .catch(e => console.error('id tables:', e.message));
   const IMG = { 'image/jpeg': 1, 'image/png': 1, 'image/webp': 1 };
   const idUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024, files: 2 },
@@ -83,9 +84,13 @@ export function mount(app, H) {
   }));
 
   /* ───── استعادة كلمة السر على 3 مراحل + دخول بالرمز ───── */
-  async function sendCode(email, why) {
-    const { rows: [last] } = await pool.query("SELECT created_at FROM email_otps WHERE email = $1 AND purpose = 'reset' ORDER BY id DESC LIMIT 1", [email]);
-    if (last && Date.now() - new Date(last.created_at).getTime() < 60000) throw bad('انتظر دقيقة قبل طلب رمز جديد', 429);
+  async function sendCode(email, why, isAdmin) {
+    if (!isAdmin) { // حساب المدير بلا حد؛ بقية الحسابات: 3 رموز كل 24 ساعة (توفيراً لحصة Brevo المجانية)
+      const { rows: [n] } = await pool.query("SELECT count(*)::int AS n FROM email_otps WHERE email = $1 AND purpose = 'reset' AND created_at > now() - interval '24 hours'", [email]);
+      if (n.n >= 3) throw bad('وصلت للحد اليومي لرموز التحقق (3 رموز). حاول غداً', 429);
+      const { rows: [last] } = await pool.query("SELECT created_at FROM email_otps WHERE email = $1 AND purpose = 'reset' ORDER BY id DESC LIMIT 1", [email]);
+      if (last && Date.now() - new Date(last.created_at).getTime() < 60000) throw bad('انتظر دقيقة قبل طلب رمز جديد', 429);
+    }
     const code = String(crypto.randomInt(100000, 1000000));
     await pool.query("INSERT INTO email_otps (purpose, email, code_hash, payload, expires_at) VALUES ('reset', $1, $2, NULL, now() + interval '10 minutes')", [email, otpHash(email, code)]);
     const how = why === 'login'
@@ -97,10 +102,11 @@ export function mount(app, H) {
   }
   const active = async email => (await pool.query('SELECT id, role, full_name FROM users WHERE email = $1 AND is_active', [email])).rows[0];
   const sess = u => ({ token: token(u.id), user: { id: u.id, role: u.role, full_name: u.full_name } });
-  const GENERIC = { message: 'إن كان البريد مسجّلاً فقد أرسلنا إليه رمزاً.' };
+  const GENERIC = { message: 'إن كان البريد مسجّلاً فقد أرسلنا إليه رمزاً. (الحد الأقصى 3 رموز في اليوم لكل حساب)' };
   const codeRoute = why => wrap(async (req, res) => {
     const email = email_(req.body.email);
-    if (await active(email)) { try { await sendCode(email, why); } catch (e) { if (e.http !== 429) throw e; } }
+    const au = await active(email);
+    if (au) { try { await sendCode(email, why, au.role === 'admin'); } catch (e) { if (e.http !== 429) throw e; } }
     res.json(GENERIC);
   });
   app.post('/api/auth/forgot', authLimiter, codeRoute('reset'));
@@ -165,11 +171,19 @@ export function mount(app, H) {
     res.on('finish', () => { if (res.statusCode === 201) later(async () => push(await admins(), 'طلب جديد 📦', 'وصل طلب جديد بانتظار المراجعة', '/')); });
     next();
   }));
+  app.patch('/api/orders/:id/note', ...admin, wrap(async (req, res) => {
+    const note = String((req.body && req.body.admin_note) || '').trim().slice(0, 500);
+    const row = await asUser(req.user, async c => (await c.query('UPDATE orders SET admin_note = $2 WHERE id = $1 RETURNING affiliate_id', [int(req.params.id, 'المعرّف', 1), note || null])).rows[0]);
+    if (!row) throw bad('الطلب غير موجود', 404);
+    if (note) later(() => push([row.affiliate_id], 'ELDOOB.DZ', `ملاحظة من الإدارة على طلبك: ${note}`.slice(0, 160), '/'));
+    res.json({ ok: true });
+  }));
   app.patch('/api/orders/:id/status', ...admin, (req, res, next) => {
     res.on('finish', () => { if (res.statusCode === 200) later(async () => {
       const { rows: [o] } = await pool.query('SELECT affiliate_id FROM orders WHERE id = $1', [req.params.id]);
       const m = { shipped: 'تم شحن طلبك 🚚', delivered: 'تم تسليم الطلب وأُضيفت عمولتك ✅', cancelled: 'تم إلغاء الطلب', retour: 'تم إرجاع الطلب' }[req.body.status];
-      if (o && m) await push([o.affiliate_id], 'ELDOOB.DZ', m, '/');
+      const nt = String((req.body && req.body.admin_note) || '').trim();
+      if (o && m) await push([o.affiliate_id], 'ELDOOB.DZ', nt ? `${m}\nملاحظة: ${nt}`.slice(0, 160) : m, '/');
     }); });
     next();
   });
@@ -181,8 +195,9 @@ export function mount(app, H) {
     next();
   }));
   app.get('/api/wallet', auth, wrap(async (req, res) => {
+    await ready2;
     const { rows: [w] } = await pool.query('SELECT balance, total_earned, pending_balance FROM affiliate_balances WHERE affiliate_id = $1', [req.user.id]);
-    const { rows: payouts } = await pool.query(`SELECT id, amount, CASE WHEN is_processing AND status::text = 'pending' THEN 'processing' ELSE status::text END AS status, method, account, created_at, paid_at
+    const { rows: payouts } = await pool.query(`SELECT id, amount, CASE WHEN is_processing AND status::text = 'pending' THEN 'processing' ELSE status::text END AS status, method, account, created_at, paid_at, admin_note
       FROM payout_requests WHERE affiliate_id = $1 ORDER BY id DESC LIMIT 20`, [req.user.id]);
     await ready2;
     const id_ok = (await pool.query('SELECT 1 FROM id_documents WHERE user_id = $1', [req.user.id])).rowCount > 0;
@@ -190,24 +205,26 @@ export function mount(app, H) {
   }));
   app.get('/api/admin/payouts', ...admin, wrap(async (_req, res) => {
     await ready2;
-    res.json((await pool.query(`SELECT p.id, p.amount, CASE WHEN p.is_processing THEN 'processing' ELSE p.status::text END AS status, p.method, p.account, p.created_at, u.full_name AS affiliate, u.phone, d.front_id, d.back_id
+    res.json((await pool.query(`SELECT p.id, p.amount, CASE WHEN p.is_processing THEN 'processing' ELSE p.status::text END AS status, p.method, p.account, p.created_at, p.admin_note, u.full_name AS affiliate, u.phone, d.front_id, d.back_id
       FROM payout_requests p JOIN users u ON u.id = p.affiliate_id LEFT JOIN id_documents d ON d.user_id = p.affiliate_id WHERE p.status::text = 'pending' ORDER BY p.id`)).rows);
   }));
   app.patch('/api/admin/payouts/:id', ...admin, wrap(async (req, res) => {
+    await ready2;
     const status = oneOf(req.body.status, ['processing', 'paid', 'rejected'], 'الحالة'), id = int(req.params.id, 'المعرّف', 1);
+    const note = req.body.admin_note === undefined ? null : String(req.body.admin_note).trim().slice(0, 300);
     const p = await tx(async c => {
       const { rows: [r] } = await c.query('SELECT affiliate_id, amount, status::text AS status FROM payout_requests WHERE id = $1 FOR UPDATE', [id]);
       if (!r || r.status !== 'pending') throw bad('طلب السحب غير موجود أو معالج مسبقاً');
       if (status === 'processing') {
-        await c.query('UPDATE payout_requests SET is_processing = true WHERE id = $1', [id]);
+        await c.query('UPDATE payout_requests SET is_processing = true, admin_note = COALESCE($2, admin_note) WHERE id = $1', [id, note]);
       } else {
         if (status === 'rejected') { const u = await c.query('UPDATE affiliate_balances SET balance = balance + $2 WHERE affiliate_id = $1', [r.affiliate_id, r.amount]); if (u.rowCount !== 1) throw bad('تعذّرت إعادة المبلغ إلى المحفظة', 500); }
-        await c.query('UPDATE payout_requests SET status = $2, is_processing = false, paid_at = CASE WHEN $3 THEN now() END WHERE id = $1', [id, status, status === 'paid']);
+        await c.query('UPDATE payout_requests SET status = $2, is_processing = false, paid_at = CASE WHEN $3 THEN now() END, admin_note = COALESCE($4, admin_note) WHERE id = $1', [id, status, status === 'paid', note]);
       }
       return r;
     });
     const m = { processing: 'طلب السحب قيد المعالجة ⏳', paid: 'تم تحويل أرباحك بنجاح ✅', rejected: 'تم رفض طلب السحب وأُعيد المبلغ لمحفظتك' }[status];
-    later(() => push([p.affiliate_id], 'ELDOOB.DZ', m, '/'));
+    later(() => push([p.affiliate_id], 'ELDOOB.DZ', note ? `${m}\nملاحظة: ${note}`.slice(0, 160) : m, '/'));
     res.json({ ok: true });
   }));
 }
