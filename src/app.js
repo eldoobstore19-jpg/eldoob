@@ -20,7 +20,9 @@ phone:'<path d="M6 3h4l2 5-2.5 1.5a11 11 0 0 0 5 5L16 12l5 2v4a2 2 0 0 1-2 2A16 
 check:'<path d="m5 12 5 5 9-10"/>',
 plus:'<path d="M12 5v14M5 12h14"/>',
 x:'<path d="M6 6l12 12M18 6 6 18"/>',
-chev:'<path d="m15 6-6 6 6 6"/>'};
+chev:'<path d="m15 6-6 6 6 6"/>',
+heart:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>'};
 const ic=(n,z=22)=>`<svg width="${z}" height="${z}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle" aria-hidden="true">${ICONS[n]||''}</svg>`;
 const fmt=n=>new Intl.NumberFormat('ar-DZ').format(Math.round(n))+' د.ج';
 const ST={Pending:'قيد المراجعة',Shipped:'قيد الشحن',Delivered:'تم التسليم',Retour:'مرتجع',Cancelled:'ملغى',Requested:'بانتظار المعالجة',Processing:'جاري المعالجة',Completed:'تم السحب',Rejected:'مرفوض'};
@@ -86,23 +88,69 @@ async function pushOff(){
 const pushCard=()=>pushOK()?`<div class="card"><div class="o" style="border:0"><span><b>الإشعارات</b><div class="mute">تنبيهات الطلبات والسحب على هذا الجهاز</div></span><label class="sw" style="margin:0"><input type="checkbox" id="pshs" ${S.pushOn?'checked':''}><s></s></label></div></div>`:'';
 
 /* ===== الواجهة العامة ===== */
-const card=p=>`<button class="p" data-p="${p.id}" ${p.stock?'':'style="opacity:.75" aria-disabled="true"'}><div class="im">${p.imgs&&p.imgs[0]?`<img src="${esc(p.imgs[0])}" alt="">`:p.e}${p.stock?'':'<div class="out">نفد المخزون</div>'}</div><div class="b"><div class="t">${esc(p.t)}</div><div class="pr">${fmt(p.base)}</div><div class="mute">سعر المنتج</div><div style="margin-top:4px;line-height:1.9">${p.stock==0?'<span class="tag t-Cancelled">نفد المخزون</span>':`<span class="mute">متوفر: ${p.stock} قطعة</span>${p.stock<5?' <span class="tag t-Pending">كمية محدودة!</span>':''}`}</div></div></button>`;
-const NAV={aff:[['home','home','الرئيسية'],['search','search','البحث'],['orders','box','طلباتي'],['more','menu','المزيد']],adm:[['aord','clipboard','الطلبات'],['apay','wallet','السحب'],['aprod','box','المنتجات'],['out','logout','خروج']]};
+let GT=null,FV={k:'',l:[]};
+const favKey=()=>'eldoob-fav-'+(S.user?S.user.id:'x');
+const favs=()=>{const k=favKey();if(FV.k!==k){let l=[];try{l=JSON.parse(localStorage.getItem(k)||'[]')}catch(e){}FV={k,l:Array.isArray(l)?l.map(String):[]}}return FV.l};
+const isFav=id=>favs().includes(String(id));
+function togFav(id){id=String(id);const l=favs(),on=!l.includes(id);FV.l=on?[...l,id]:l.filter(x=>x!==id);try{localStorage.setItem(FV.k,JSON.stringify(FV.l))}catch(e){}
+ document.querySelectorAll('[data-fav="'+id+'"]').forEach(h=>h.classList.toggle('on',on));
+ if(S.tab=='fav')render();toast(on?'أُضيف إلى المفضلة':'أُزيل من المفضلة','ok')}
+const hrt=id=>`<span class="hrt${isFav(id)?' on':''}" data-fav="${id}" role="button" aria-label="المفضلة">${ic('heart',18)}</span>`;
+const stk=p=>!p.stock?'<span class="stk s0">نفد المخزون</span>':p.stock<5?`<span class="stk s1">كمية محدودة — بقي ${p.stock}</span>`:`<span class="stk s2">متوفر ${p.stock} قطعة</span>`;
+const card=p=>`<div class="p" data-p="${p.id}" role="button" tabindex="0" ${p.stock?'':'style="opacity:.8"'}><div class="im">${p.imgs&&p.imgs[0]?`<img src="${esc(p.imgs[0])}" alt="" loading="lazy">`:p.e}${hrt(p.id)}${p.stock?'':'<div class="out">نفد المخزون</div>'}</div><div class="b"><div class="t">${esc(p.t)}</div>${p.d?`<div class="sd">${esc(p.d)}</div>`:''}<div class="pr">${fmt(p.base)}</div><div style="margin-top:4px">${stk(p)}</div></div></div>`;
+const homeV=()=>{if(!S.P.length)return emptyPic('cart','لا توجد منتجات حالياً');
+ let w=S.P.filter(p=>p.stock&&p.imgs&&p.imgs[0]);if(!w.length)w=S.P.filter(p=>p.imgs&&p.imgs[0]);
+ let mq='';if(w.length){let l=[...w];while(l.length<8)l=l.concat(w);
+  const it=l.map(p=>`<div class="mqi" data-p="${p.id}"><img src="${esc(p.imgs[0])}" alt="" loading="lazy"></div>`).join('');
+  mq=`<div class="sec">منتجات مميزة</div><div class="mq"><div class="mqt" style="--d:${l.length*4}s">${it}${it}</div></div>`}
+ return mq+`<div class="sec">كل المنتجات</div><div class="grid">${S.P.map(card).join('')}</div>`};
+const favV=()=>{const l=S.P.filter(p=>isFav(p.id));return `<div class="sec">منتجاتي المفضلة</div>`+(l.length?`<div class="grid">${l.map(card).join('')}</div>`:emptyPic('bear-thumb','لا توجد منتجات مفضلة بعد. اضغط على القلب في أي منتج لإضافته هنا.'))};
+const prodV=()=>{const p=pid(S.cp),im=p.imgs||[],pc=Math.min(100,Math.round(p.stock/30*100)),bc=!p.stock?'var(--bad)':p.stock<5?'var(--warn)':'var(--ok)';
+ return `<button class="bk" data-back="1">${ic('chev',18)} رجوع</button>
+<div class="gal"><div class="gt" id="gt" dir="ltr">${im.length?im.map(u=>`<img src="${esc(u)}" alt="">`).join(''):`<div class="gph">${p.e}</div>`}</div>${hrt(p.id)}${im.length>1?`<div class="dots" id="dots">${im.map((_,i)=>`<i class="${i?'':'on'}"></i>`).join('')}</div>`:''}${p.stock?'':'<div class="out">نفد المخزون</div>'}</div>
+<div class="cpr"><button class="cp" data-copy="n">${ic('copy',15)} نسخ الاسم</button></div>
+<h2 class="pn">${esc(p.ct)}</h2>
+<div class="card dsc"><div class="dh"><b>وصف المنتج</b>${p.d?`<button class="cp" data-copy="d">${ic('copy',15)} نسخ الوصف</button>`:''}</div>${p.d?`<div class="dt" id="dt">${esc(p.d)}</div><button class="link" id="dmore" data-more="1" hidden>عرض الوصف كاملاً ▾</button>`:'<div class="mute">لا يوجد وصف لهذا المنتج.</div>'}</div>
+<div class="pbox"><div class="mute">سعر المنتج</div><div class="bigp pr">${fmt(p.base)}</div><div class="o" style="border:0;padding:10px 0 0"><span class="mute">الكمية المتوفرة</span>${stk(p)}</div><div class="bar"><i style="width:${p.stock?Math.max(pc,6):0}%;background:${bc}"></i></div></div>
+<div class="cta"><button class="btn" data-buy="${p.id}" ${p.stock?'':'disabled'}>${p.stock?'اضغط لمتابعة الشراء':'نفد المخزون'}</button></div>`};
+const buyV=()=>{const p=pid(S.cp),ws=Object.values(S.G.w),first=(ws.find(w=>w.av)||ws[0]||{c:16}).c;
+ return `<button class="bk" data-back="1">${ic('chev',18)} رجوع</button>
+<div class="card" style="display:flex;gap:12px;align-items:center">${p.imgs[0]?`<img src="${esc(p.imgs[0])}" alt="" style="width:72px;height:72px;border-radius:14px;object-fit:cover">`:`<div class="av" style="width:72px;height:72px;border-radius:14px">${p.e}</div>`}<div style="flex:1"><b>${esc(p.ct)}</b><div class="mute">سعر المنتج</div><div class="pr" style="color:var(--gold)">${fmt(p.base)}</div></div></div>
+<div id="of" data-pid="${p.id}">
+<div class="card"><h3>بيانات الزبون</h3><label>اسم الزبون<input id="oc1" autocomplete="off"></label><label>هاتف الزبون<input id="oc2" inputmode="tel" placeholder="05XXXXXXXX"></label></div>
+<div class="card"><h3>مكان التوصيل</h3><label>الولاية<select id="ow">${ws.map(w=>`<option value="${w.c}" ${w.av?'':'disabled'} ${w.c==first?'selected':''}>${w.c} - ${esc(w.n)}${w.av?'':' (غير متوفر)'}</option>`).join('')}</select></label>
+<label>البلدية<span id="ocw">${communeField(first)}</span></label><label>العنوان<input id="oad" autocomplete="off"></label>
+<label>نوع التوصيل<select id="od"><option value="home">إلى المنزل</option><option value="desk">إلى المكتب</option></select></label></div>
+<div class="card"><h3>الكمية والسعر</h3><label>الكمية (المتوفر ${p.stock})<div class="qs"><button type="button" data-q="-1">−</button><input id="oq" type="number" min="1" max="${p.stock}" value="1" inputmode="numeric"><button type="button" data-q="1">+</button></div></label>
+<label>سعر بيعك النهائي للزبون (د.ج)<input id="op" type="number" inputmode="numeric" min="${p.base}" value="${p.base}"></label><div class="mute">ارفع السعر فوق سعر المنتج وربحك يزيد تلقائياً.</div></div>
+<div class="card" id="osum"></div><button class="btn" id="ogo2">تأكيد الطلب</button></div>`};
+const copyTxt=async(t,m)=>{try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.select();try{document.execCommand('copy')}catch(_){}a.remove()}toast(m,'ok')};
+function initGal(){clearInterval(GT);const g=$('#gt');if(g){const d=$('#dots'),n=g.children.length;
+ g.addEventListener('scroll',()=>{if(!d)return;const i=Math.round(Math.abs(g.scrollLeft)/g.clientWidth);[...d.children].forEach((x,k)=>x.classList.toggle('on',k==i))},{passive:true});
+ if(n>1){g.addEventListener('touchstart',()=>{g.dataset.t=1},{passive:true});g.addEventListener('touchend',()=>setTimeout(()=>{delete g.dataset.t},4000),{passive:true});
+  GT=setInterval(()=>{if(!document.body.contains(g)){clearInterval(GT);return}if(g.dataset.t)return;g.scrollTo({left:((Math.round(g.scrollLeft/g.clientWidth)+1)%n)*g.clientWidth,behavior:'smooth'})},3000)}}
+ const t=$('#dt'),m=$('#dmore');if(t&&m&&t.scrollHeight>t.clientHeight+2)m.hidden=false}
+function openProd(id){if(!isAff())return;S.cp=id;if(!['prod','buy'].includes(S.tab))S.from=S.tab;
+ try{history.replaceState({t:S.tab,cp:S.cp},'');history.pushState({t:'prod',cp:id},'')}catch(e){}S.tab='prod';render();scrollTo(0,0)}
+function openBuy(){try{history.pushState({t:'buy',cp:S.cp},'')}catch(e){}S.tab='buy';render();scrollTo(0,0)}
+window.addEventListener('popstate',e=>{if(!S.user)return;const st=e.state||{};S.tab=st.t||(isAdm()?'aord':'home');if(st.cp)S.cp=st.cp;render();scrollTo(0,0)});
+const NAV={aff:[['home','home','الرئيسية'],['search','search','البحث'],['fav','heart','المفضلة'],['orders','box','طلباتي'],['more','menu','المزيد']],adm:[['aord','clipboard','الطلبات'],['apay','wallet','السحب'],['aprod','box','المنتجات'],['out','logout','خروج']]};
 const reqN=()=>S.W.filter(p=>p.st=='Requested'||p.st=='Processing').length;
 function render(){
- const u=S.user,b=$('#body');
+ const u=S.user,b=$('#body');clearInterval(GT);
  $('#top').hidden=$('#nav').hidden=$('#brand').hidden=$('#tt').hidden=!u;
  if(u)$('#brand').innerHTML=logo(30)+'<b>ELDOOB.DZ</b><small>متجر الدب</small>';
  if(!u){b.innerHTML=({login:loginV,reg:regV,otp:otpV,forgot:forgotV,fcode:fcodeV,freset:fresetV,lcode:lcodeV,lverify:lverifyV}[S.scr]||landV)();return}
  $('#av').innerHTML=u.av?`<img src="${esc(u.av)}" alt="">`:(isAdm()?pic('shield',36):pic('bear-thumb',36));$('#nm').textContent=u.name+(isAdm()?' — مدير':' — مسوّق');
  $('#cm').hidden=isAdm();if(isAff())$('#cv').textContent=fmt(S.wallet.b);
- $('#nav').innerHTML=NAV[u.role].map(([k,i,l])=>`<button data-n="${k}" class="${(S.tab==k||(k=='more'&&['deliv','help','tuts','acct'].includes(S.tab)))?'on':''}"><span style="display:flex;justify-content:center">${ic(i,22)}</span>${l}${k=='apay'&&reqN()?` (${reqN()})`:''}</button>`).join('');
- const V={home:()=>S.P.length?`<div class="grid">${S.P.map(card).join('')}</div>`:emptyPic('cart','لا توجد منتجات حالياً'),more,acct,tuts,search,help,deliv,profile,orders,wallet,aord,apay,aprod,photo:photoV};
+ $('#nav').innerHTML=NAV[u.role].map(([k,i,l])=>`<button data-n="${k}" class="${(S.tab==k||(k=='more'&&['deliv','help','tuts','acct'].includes(S.tab))||(['prod','buy'].includes(S.tab)&&S.from==k))?'on':''}"><span style="display:flex;justify-content:center">${ic(i,22)}</span>${l}${k=='apay'&&reqN()?` (${reqN()})`:''}</button>`).join('');
+ const V={home:homeV,fav:favV,prod:prodV,buy:buyV,more,acct,tuts,search,help,deliv,profile,orders,wallet,aord,apay,aprod,photo:photoV};
  const adminTabs=['aord','apay','aprod'];
  if(adminTabs.includes(S.tab)&&!isAdm())S.tab='home';
  if(isAdm()&&!adminTabs.includes(S.tab))S.tab='aord';
  if(!V[S.tab])S.tab=isAdm()?'aord':'home';
- b.innerHTML=V[S.tab]();if(S.tab=='search'){res();$('#q').focus()}if(S.tab=='deliv')dl();
+ if(['prod','buy'].includes(S.tab)&&(!isAff()||!pid(S.cp)))S.tab='home';
+ b.innerHTML=V[S.tab]();if(S.tab=='prod')initGal();if(S.tab=='buy')sumUpd();if(S.tab=='search'){res();$('#q').focus()}if(S.tab=='deliv')dl();
 }
 const go=t=>{S.tab=t;render();scrollTo(0,0)};
 const refresh=async msg=>{await load();render();if(msg)toast(msg,'ok')};
@@ -175,17 +223,8 @@ const prevBox=(src,label,act)=>`<div style="flex:1;text-align:center"><div class
 const idCard=()=>`<div class="card"><h3 style="display:flex;align-items:center;gap:8px">${pic('shield',36)} توثيق الهوية</h3><div class="mute" style="margin-bottom:10px">مطلوب مرة واحدة قبل أول سحب: صورة واضحة لوجه بطاقة الهوية وظهرها. تُحفظ بسرية ولا يراها إلا المدير.</div><div style="display:flex;gap:10px">${prevBox(S.idfp,'وجه البطاقة','pickid:front')}${prevBox(S.idbp,'ظهر البطاقة','pickid:back')}</div><button class="btn" id="ids" style="margin-top:12px;${S.idf&&S.idb?'':'opacity:.5'}">رفع الصور</button></div>`;
 const wallet=()=>`<div class="card"><h3 style="display:flex;align-items:center;gap:8px">${pic('money',36)} رصيدي</h3><div class="pr" style="font-size:24px">${fmt(S.wallet.b)}</div><div class="mute">أرباح قيد الانتظار: ${fmt(S.wallet.p)}</div>${S.idOk?`<label style="margin-top:10px">المبلغ المطلوب سحبه (الحد الأدنى 1000)<input id="wa" inputmode="numeric" placeholder="مثال: 3000"></label><button class="btn" id="wgo">طلب سحب (${S.user.pm=='Flexy'?'فليكسي':'بريدي موب'})</button>`:'<div class="mute" style="margin-top:8px">أكمل توثيق الهوية أدناه لتتمكن من السحب.</div>'}</div>${S.idOk?'':idCard()}<div class="card"><h3>سجل السحب</h3>${S.W.length?S.W.map(w=>`<div class="o"><span>${fmt(w.a)}<div class="mute">${w.d}</div></span>${tag(w.st)}</div>`).join(''):empty('لا توجد عمليات سحب')}</div>`;
 const communeField=c=>{const l=S.G.c[c];return l&&l.length?`<select id="ocm">${l.map(n=>`<option>${esc(n)}</option>`).join('')}</select>`:`<input id="ocm" placeholder="اكتب اسم البلدية">`};
-function productSheet(id){const p=pid(id);if(!p||!p.stock)return;
- const ws=Object.values(S.G.w),first=(ws.find(w=>w.av)||ws[0]||{c:16}).c;
- openSheet(`<h3>${esc(p.ct)}</h3>${p.imgs[0]?`<img src="${esc(p.imgs[0])}" alt="" style="width:100%;border-radius:16px;max-height:240px;object-fit:cover">`:''}<p>${esc(p.d)}</p><div class="o" style="border:0"><span class="mute">سعر المنتج</span><b class="pr">${fmt(p.base)}</b></div>
- <div id="of" data-pid="${p.id}"><label>اسم الزبون<input id="oc1"></label><label>هاتف الزبون<input id="oc2" inputmode="tel" placeholder="05XXXXXXXX"></label>
- <label>الولاية<select id="ow">${ws.map(w=>`<option value="${w.c}" ${w.av?'':'disabled'} ${w.c==first?'selected':''}>${w.c} - ${esc(w.n)}${w.av?'':' (غير متوفر)'}</option>`).join('')}</select></label>
- <label>البلدية<span id="ocw">${communeField(first)}</span></label><label>العنوان<input id="oad"></label>
- <label>التوصيل<select id="od"><option value="home">إلى المنزل</option><option value="desk">إلى المكتب</option></select></label>
- <label>الكمية<input id="oq" type="number" min="1" max="${p.stock}" value="1"></label><label>سعر بيعك للزبون (د.ج)<input id="op" type="number" inputmode="numeric" min="${p.base}" value="${p.base}"></label>
- <div class="card" id="osum"></div><button class="btn" id="ogo2">تأكيد الطلب</button><button class="btn gh" data-c="1" style="margin-top:8px">إلغاء</button></div>`);sumUpd()}
-function sumUpd(){const f=$('#of');if(!f)return;const p=pid(f.dataset.pid),base=Number(p.base),q=+$('#oq').value||1,pr=+$('#op').value||0,gain=pr-base,w=S.G.w[$('#ow').value],fee=w?w[$('#od').value]:0;
- $('#osum').innerHTML=`<div class="o"><span>سعر المنتج</span><span>${fmt(base)}</span></div><div class="o"><span>عمولتك (ربحك)</span><b style="color:${gain>=0?'var(--ok)':'var(--bad)'}">${gain>=0?'+':''}${fmt(gain*q)}</b></div><div class="o"><span>رسوم التوصيل (على الزبون)</span><span>${fmt(fee)}</span></div><div class="o" style="border:0"><span>الزبون يدفع</span><b>${fmt(pr*q+fee)}</b></div>`}
+function sumUpd(){const f=$('#of');if(!f)return;const p=pid(f.dataset.pid),base=Number(p.base),q=Math.max(1,+$('#oq').value||1),pr=+$('#op').value||0,gain=pr-base,w=S.G.w[$('#ow').value],fee=w?w[$('#od').value]:0;
+ $('#osum').innerHTML=`<h3>ملخص الطلب</h3><div class="o"><span>سعر المنتج × ${q}</span><span>${fmt(base*q)}</span></div><div class="o"><span>سعر بيعك × ${q}</span><span>${fmt(pr*q)}</span></div><div class="o"><span>عمولتك (ربحك)</span><b style="color:${gain>=0?'var(--ok)':'var(--bad)'}">${gain>=0?'+':''}${fmt(gain*q)}</b></div><div class="o"><span>رسوم التوصيل (على الزبون)</span><span>${fmt(fee)}</span></div><div class="o tot"><span>الزبون يدفع</span><b>${fmt(pr*q+fee)}</b></div>${gain<0?'<div class="mute" style="color:var(--bad)">سعر البيع أقل من سعر المنتج، ارفعه للمتابعة.</div>':''}`}
 async function doOrder(){const f=$('#of'),p=pid(f.dataset.pid),n=$('#oc1').value.trim(),ph=$('#oc2').value.replace(/\s/g,''),q=+$('#oq').value,pr=+$('#op').value||0,cm=$('#ocm').value.trim(),ad=$('#oad').value.trim();
  if(!n)return toast('أدخل اسم الزبون','bad');if(!RX.p.test(ph))return toast('هاتف الزبون غير صالح','bad');if(!cm)return toast('أدخل البلدية','bad');if(!ad)return toast('أدخل العنوان','bad');
  if(!(q>=1&&q<=p.stock))return toast('كمية غير صالحة','bad');if(!(Number.isInteger(pr)&&pr>=Number(p.base)))return toast('سعر البيع لا يمكن أن يكون أقل من سعر المنتج','bad');
@@ -238,7 +277,13 @@ document.addEventListener('click',e=>{const t=e.target,c=s=>t.closest(s);let x;
  if(c('[data-out]'))return confirmOut();
  if(x=c('[data-un]')){const i=$('#ru');i.value=x.dataset.un;unCheck(i.value);return}
  if(x=c('[data-g]')){S.scr=x.dataset.g;S.unOk=null;return render()}
- if((x=c('[data-p]'))&&!c('#sheet'))return productSheet(x.dataset.p);
+ if(x=c('[data-fav]'))return togFav(x.dataset.fav);
+ if((x=c('[data-p]'))&&!c('#sheet'))return openProd(x.dataset.p);
+ if(c('[data-back]'))return history.back();
+ if(x=c('[data-buy]'))return openBuy();
+ if(x=c('[data-copy]')){const p=pid(S.cp);if(p)copyTxt(x.dataset.copy=='n'?p.ct:p.d,x.dataset.copy=='n'?'تم نسخ الاسم':'تم نسخ الوصف');return}
+ if(c('[data-more]')){const t=$('#dt'),m=$('#dmore');t.classList.toggle('open');m.textContent=t.classList.contains('open')?'إخفاء ▴':'عرض الوصف كاملاً ▾';return}
+ if(x=c('[data-q]')){const i=$('#oq'),p=pid(S.cp);i.value=Math.min(p.stock,Math.max(1,(+i.value||1)+(+x.dataset.q)));sumUpd();return}
  if(x=c('[data-n]')){const k=x.dataset.n;return k=='out'?confirmOut():go(k)}
  if(x=c('[data-rs]'))return run(()=>sendCode(x.dataset.rs,S.fe));
  if(x=c('[data-pa]')){const[i,s]=x.dataset.pa.split(':');return run(async()=>{await api('PATCH','/admin/payouts/'+i,{status:s});await refresh('تم التحديث')})}
