@@ -97,7 +97,8 @@ function togFav(id){id=String(id);const l=favs(),on=!l.includes(id);FV.l=on?[...
  if(S.tab=='fav')render();toast(on?'أُضيف إلى المفضلة':'أُزيل من المفضلة','ok')}
 const hrt=id=>`<span class="hrt${isFav(id)?' on':''}" data-fav="${id}" role="button" aria-label="المفضلة">${ic('heart',18)}</span>`;
 const stk=p=>!p.stock?'<span class="stk s0">نفد المخزون</span>':p.stock<5?`<span class="stk s1">كمية محدودة — بقي ${p.stock}</span>`:`<span class="stk s2">متوفر ${p.stock} قطعة</span>`;
-const card=p=>`<div class="p" data-p="${p.id}" role="button" tabindex="0" ${p.stock?'':'style="opacity:.8"'}><div class="im">${p.imgs&&p.imgs[0]?`<img src="${esc(p.imgs[0])}" alt="" loading="lazy">`:p.e}${hrt(p.id)}${p.stock?'':'<div class="out">نفد المخزون</div>'}</div><div class="b"><div class="t">${esc(p.t)}</div>${p.d?`<div class="sd">${esc(p.d)}</div>`:''}<div class="pr">${fmt(p.base)}</div><div style="margin-top:4px">${stk(p)}</div></div></div>`;
+const stkS=p=>!p.stock?'<span class="stk s0">نفد</span>':p.stock<5?`<span class="stk s1">بقي ${p.stock}</span>`:`<span class="stk s2">${p.stock} قطعة</span>`;
+const card=p=>`<div class="p" data-p="${p.id}" role="button" tabindex="0" ${p.stock?'':'style="opacity:.8"'}><div class="im">${p.imgs&&p.imgs[0]?`<img src="${esc(p.imgs[0])}" alt="" loading="lazy">`:p.e}${hrt(p.id)}${p.stock?'':'<div class="out">نفد المخزون</div>'}</div><div class="b"><div class="t">${esc(p.t)}</div>${p.d?`<div class="sd">${esc(p.d)}</div>`:''}<div class="pk"><span class="pr">${fmt(p.base)}</span>${stkS(p)}</div></div></div>`;
 const homeV=()=>{if(!S.P.length)return emptyPic('cart','لا توجد منتجات حالياً');
  let w=S.P.filter(p=>p.stock&&p.imgs&&p.imgs[0]);if(!w.length)w=S.P.filter(p=>p.imgs&&p.imgs[0]);
  let mq='';if(w.length){let l=[...w];while(l.length<8)l=l.concat(w);
