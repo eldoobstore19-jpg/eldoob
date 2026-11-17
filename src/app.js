@@ -135,7 +135,7 @@ const wrapV=(title,sub,body,back)=>`<div style="padding:16px 4px"><div style="te
 const codeIn=id=>`<label>رمز التحقق<input id="${id}" inputmode="numeric" maxlength="6" autocomplete="one-time-code" dir="ltr" style="text-align:center;font-size:22px;letter-spacing:6px"></label>`;
 const landV=()=>`<div style="background:linear-gradient(180deg,#0b1a44,#070d1f);border:1px solid var(--line);border-radius:26px;padding:64px 18px;text-align:center;display:flex;flex-direction:column;gap:14px;margin-top:16px"><div style="display:flex;justify-content:center">${logo(190)}</div><h1 style="margin:0 0 20px;letter-spacing:3px;color:var(--ac2);text-shadow:var(--glow)">ELDOOB.DZ</h1><button class="btn" data-g="login">تسجيل الدخول</button><button class="btn gh" data-g="reg">انضم إلينا كمسوّق</button></div>`;
 const loginV=()=>wrapV('تسجيل الدخول','',`<label>البريد الإلكتروني أو اسم المستخدم<input id="lp" dir="ltr" autocapitalize="none" autocomplete="username"></label><label>كلمة المرور<input id="lw" type="password" autocomplete="current-password"></label><button class="btn" id="lgo">دخول</button><button class="link" data-g="lcode" style="display:block;margin:12px auto 0">دخول بالرمز (بدون كلمة سر)</button><button class="link" data-g="forgot" style="display:block;margin:6px auto 0">نسيت كلمة السر؟</button>`,'land');
-const regV=()=>wrapV('انضم إلينا كمسوّق','',`<label>الاسم الكامل<input id="rn"></label><label>اسم المستخدم (a-z وأرقام و _)<input id="ru" dir="ltr" autocapitalize="none"></label><label>رقم الهاتف<input id="rp" inputmode="tel" placeholder="05XXXXXXXX"></label><label>البريد الإلكتروني<input id="re" type="email" dir="ltr"></label><label>كلمة المرور (8 أحرف فأكثر)<input id="rw" type="password"></label><button class="btn" id="rgo">إرسال رمز التأكيد</button>`,'land');
+const regV=()=>wrapV('انضم إلينا كمسوّق','',`<label>الاسم الكامل<input id="rn"></label><label>اسم المستخدم (a-z وأرقام و _)<input id="ru" dir="ltr" autocapitalize="none" autocomplete="off"></label><div id="ruS" style="min-height:22px;font-size:13px;margin:-4px 0 8px"></div><label>رقم الهاتف<input id="rp" inputmode="tel" placeholder="05XXXXXXXX"></label><label>البريد الإلكتروني<input id="re" type="email" dir="ltr"></label><label>كلمة المرور (8 أحرف فأكثر)<input id="rw" type="password"></label><button class="btn" id="rgo">إرسال رمز التأكيد</button>`,'land');
 const otpV=()=>wrapV('تأكيد البريد الإلكتروني',`أرسلنا رمزاً من 6 أرقام إلى<br><b dir="ltr">${esc(S.rd.email)}</b>`,`${codeIn('oc')}<button class="btn" id="ogo">تأكيد وإنشاء الحساب</button><button class="link" id="ors" style="display:block;margin:10px auto 0">إعادة إرسال الرمز</button>`,'reg');
 const forgotV=()=>wrapV('نسيت كلمة السر؟','أدخل بريدك وسنرسل إليه رمز التحقق.',`${steps(1)}<label>البريد الإلكتروني<input id="fe" type="email" dir="ltr"></label><button class="btn" id="fgo">إرسال الرمز</button>`,'login');
 const fcodeV=()=>wrapV('أدخل رمز التحقق',`الرمز أُرسل إلى<br><b dir="ltr">${esc(S.fe)}</b>`,`${steps(2)}${codeIn('fc')}<button class="btn" id="fvo">تحقّق</button><button class="link" data-rs="forgot" style="display:block;margin:10px auto 0">إعادة إرسال الرمز</button>`,'forgot');
@@ -146,6 +146,7 @@ const lverifyV=()=>wrapV('أدخل الرمز',`الرمز أُرسل إلى<br>
 async function doLogin(){const d=await api('POST','/auth/login',{identifier:$('#lp').value.trim().toLowerCase(),password:$('#lw').value});saveToken(d.token);await boot()}
 async function doReg(){const n=$('#rn').value.trim(),us=$('#ru').value.trim().toLowerCase(),p=$('#rp').value.replace(/\s/g,''),e=$('#re').value.trim().toLowerCase(),w=$('#rw').value;
  const bad=m=>toast(m,'bad');
+ if(S.unOk===false)return bad('اسم المستخدم محجوز، اختر اسماً آخر');
  if(!n)return bad('أدخل الاسم الكامل');if(!RX.u.test(us))return bad('اسم المستخدم: 3 إلى 20 حرفاً (a-z وأرقام و _ فقط)');if(!RX.p.test(p))return bad('رقم هاتف جزائري غير صالح');if(!RX.e.test(e))return bad('بريد إلكتروني غير صالح');if(w.length<8)return bad('كلمة المرور 8 أحرف على الأقل');
  const body={full_name:n,username:us,phone:p,email:e,password:w};
  await api('POST','/auth/register/start',body);S.rd=body;S.scr='otp';render();toast('أرسلنا رمز التأكيد إلى بريدك','ok')}
@@ -216,11 +217,27 @@ const photoV=()=>`<div style="padding:16px 4px;text-align:center">${logo(64)}<h2
 async function doPhoto(){if(!S.pf)return toast('اختر صورة أولاً','bad');const fd=new FormData();fd.append('avatar',await fileBlob(S.pf,256,true),'a.jpg');await api('POST','/me/avatar',fd);S.pf=null;S.pp='';await boot(true);go('home');toast('تم حفظ صورتك','ok')}
 async function doIdDocs(){if(!S.idf||!S.idb)return toast('اختر صورة وجه البطاقة وظهرها','bad');const fd=new FormData();fd.append('front',await fileBlob(S.idf,1400,false),'f.jpg');fd.append('back',await fileBlob(S.idb,1400,false),'b.jpg');await api('POST','/me/id-docs',fd);S.idf=S.idb=null;S.idfp=S.idbp='';await refresh('تم رفع الهوية، يمكنك الآن طلب السحب')}
 
+/* ===== فحص اسم المستخدم مباشرة ===== */
+let unT=null,unSeq=0;
+const unMsg=h=>{const e=$('#ruS');if(e)e.innerHTML=h};
+function unCheck(raw){
+ clearTimeout(unT);S.unOk=null;const v=raw.trim().toLowerCase();
+ if(!v)return unMsg('');
+ if(!RX.u.test(v)){S.unOk=false;return unMsg(`<span style="color:var(--bad)">${ic('x',14)} من 3 إلى 20 حرفاً: a-z وأرقام و _ فقط</span>`)}
+ unMsg('<span class="mute">جارٍ التحقق…</span>');
+ const my=++unSeq;
+ unT=setTimeout(async()=>{try{
+  const d=await api('GET','/auth/username-check?u='+encodeURIComponent(v));if(my!==unSeq)return;
+  if(d.available){S.unOk=true;unMsg(`<span style="color:var(--ok)">${ic('check',14)} اسم المستخدم متاح</span>`)}
+  else{S.unOk=false;unMsg(`<span style="color:var(--bad)">${ic('x',14)} اسم المستخدم محجوز.</span>${d.suggestions&&d.suggestions.length?` <span class="mute">جرّب:</span> ${d.suggestions.map(x=>`<button class="tag" data-un="${esc(x)}" dir="ltr" style="border:0;cursor:pointer;color:var(--ac2)">${esc(x)}</button>`).join(' ')}`:''}`)}
+ }catch(e){if(my===unSeq){S.unOk=null;unMsg('')}}},450)}
+
 /* ===== الأحداث ===== */
 document.addEventListener('click',e=>{const t=e.target,c=s=>t.closest(s);let x;
  if(t.id=='sheet'||c('[data-c]'))return closeSheet();
  if(c('[data-out]'))return confirmOut();
- if(x=c('[data-g]')){S.scr=x.dataset.g;return render()}
+ if(x=c('[data-un]')){const i=$('#ru');i.value=x.dataset.un;unCheck(i.value);return}
+ if(x=c('[data-g]')){S.scr=x.dataset.g;S.unOk=null;return render()}
  if((x=c('[data-p]'))&&!c('#sheet'))return productSheet(x.dataset.p);
  if(x=c('[data-n]')){const k=x.dataset.n;return k=='out'?confirmOut():go(k)}
  if(x=c('[data-rs]'))return run(()=>sendCode(x.dataset.rs,S.fe));
@@ -244,6 +261,7 @@ document.addEventListener('click',e=>{const t=e.target,c=s=>t.closest(s);let x;
   chp:()=>run(doChp),sva:()=>run(doSaveAcct),wgo:()=>run(doPayout),ogo2:()=>run(doOrder),pgo:()=>run(doAddProd),phs:()=>run(doPhoto),ids:()=>run(doIdDocs)};
  if(A[id])A[id]()});
 document.addEventListener('input',e=>{const i=e.target.id;
+ if(i=='ru'){e.target.value=e.target.value.toLowerCase().replace(/\s/g,'');unCheck(e.target.value)}
  if(i=='q'){S.q=e.target.value;res()}
  if(['oq','op'].includes(i))sumUpd()});
 document.addEventListener('change',e=>{const t=e.target;
