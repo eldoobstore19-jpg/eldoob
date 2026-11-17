@@ -55,6 +55,8 @@ const int = (v, name, min = 0) => { const n = Number(v); if (!Number.isInteger(n
 const str = (v, name, max = 200) => { if (typeof v !== 'string' || !v.trim() || v.length > max) throw bad(`${name} مطلوب`); return v.trim(); };
 const oneOf = (v, list, name) => { if (!list.includes(v)) throw bad(`${name} غير صالح`); return v; };
 const opt = (v, f) => (v === undefined ? null : f(v));
+// معاملة بصلاحيات الخادم (بدون RLS): تُستخدم فقط في المسارات التي تتحقق من الهوية بنفسها وتحدّد affiliate_id صراحةً.
+async function tx(fn) { const c = await pool.connect(); try { await c.query('BEGIN'); const out = await fn(c); await c.query('COMMIT'); return out; } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); } }
 const payAcct = (m, a) => { a = String(a).replace(/\s/g, ''); if (m === 'flexy' && !/^0[567]\d{8}$/.test(a)) throw bad('رقم فليكسي غير صالح (مثال: 0550000000)'); if (m === 'baridimob' && !/^\d{20}$/.test(a)) throw bad('رقم RIP يجب أن يكون 20 رقماً بالضبط'); return a.slice(0, 40); };
 
 const auth = wrap(async (req, _res, next) => {
@@ -103,7 +105,7 @@ async function checkOtp(purpose, email, code) {
 }
 
 // مسارات إضافية: استعادة كلمة السر، الدخول بالرمز، الإشعارات، الولايات والبلديات، السحب
-mount(app, { pool, asUser, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf, email_, password_, otpHash, token, SECRET, bcrypt, jwt, checkOtp });
+mount(app, { pool, asUser, tx, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf, email_, password_, otpHash, token, SECRET, bcrypt, jwt, checkOtp });
 
 app.post('/api/auth/register/start', authLimiter, wrap(async (req, res) => {
   const b = req.body, name = str(b.full_name, 'الاسم', 100), username = username_(b.username), phone = phone_(b.phone), email = email_(b.email), pass = password_(b.password);
@@ -310,12 +312,12 @@ app.post('/api/payouts', affiliate, wrap(async (req, res) => {
     const a = payAcct(m, str(req.body.account, 'رقم الحساب', 40));
     await pool.query('UPDATE users SET payout_method = $2, payout_account = $3 WHERE id = $1', [req.user.id, m, a]);
   }
-  const row = await asUser(req.user, async c => {
-    const { rows: [w] } = await c.query('SELECT balance, payout_method, payout_account FROM affiliate_balances ab JOIN users u ON u.id = ab.affiliate_id WHERE ab.affiliate_id = $1 FOR UPDATE', [req.user.id]);
+  const row = await tx(async c => {
+    const { rows: [w] } = await c.query('SELECT ab.balance, u.payout_method, u.payout_account FROM affiliate_balances ab JOIN users u ON u.id = ab.affiliate_id WHERE ab.affiliate_id = $1 FOR UPDATE OF ab', [req.user.id]);
     if (!w || w.balance < amount) throw bad('رصيدك غير كافٍ', 400);
-    if (!w.payout_method || !w.payout_account) throw bad('يرجى ضبط معلومات الدفع في ملفك الشخصي أولاً', 400);
-
-    await c.query('UPDATE affiliate_balances SET balance = balance - $2 WHERE affiliate_id = $1', [req.user.id, amount]);
+    if (!w.payout_method || !w.payout_account) throw bad('يرجى ضبط معلومات الدفع أولاً', 400);
+    const d = await c.query('UPDATE affiliate_balances SET balance = balance - $2 WHERE affiliate_id = $1 AND balance >= $2', [req.user.id, amount]);
+    if (d.rowCount !== 1) throw bad('تعذّر خصم المبلغ من رصيدك، لم يُنشأ طلب السحب', 500);
     const { rows: [p] } = await c.query(
       `INSERT INTO payout_requests (affiliate_id, amount, method, account, status) VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
       [req.user.id, amount, w.payout_method, w.payout_account]);
