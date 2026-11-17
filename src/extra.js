@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { flushEmails } from './mailer.js';
 
 let webpush = null;
@@ -125,6 +126,21 @@ export function mount(app, H) {
     const u = await active(email);
     if (!u) throw bad('الحساب غير موجود', 404);
     res.json(sess(u));
+  }));
+
+  /* ───── فحص توفر اسم المستخدم أثناء التسجيل ───── */
+  const unLimiter = rateLimit({ windowMs: 60000, limit: 40, standardHeaders: true, legacyHeaders: false });
+  app.get('/api/auth/username-check', unLimiter, wrap(async (req, res) => {
+    const u = String(req.query.u || '').trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,20}$/.test(u)) return res.json({ available: false, valid: false, suggestions: [] });
+    const taken = async list => new Set((await pool.query('SELECT lower(username) AS u FROM users WHERE lower(username) = ANY($1::text[])', [list])).rows.map(r => r.u));
+    if (!(await taken([u])).has(u)) return res.json({ available: true, valid: true, suggestions: [] });
+    const base = u.slice(0, 15).replace(/_+$/, '');
+    const cands = [`${base}_dz`, `${base}${new Date().getFullYear()}`];
+    while (cands.length < 14) cands.push(Math.random() < 0.5 ? `${base}${crypto.randomInt(10, 999)}` : `${base}_${crypto.randomInt(10, 999)}`);
+    const list = [...new Set(cands)].filter(c => /^[a-z0-9_]{3,20}$/.test(c));
+    const used = await taken(list);
+    res.json({ available: false, valid: true, suggestions: list.filter(c => !used.has(c)).slice(0, 3) });
   }));
 
   /* ───── الولايات والبلديات في طلب واحد ───── */
