@@ -35,9 +35,9 @@ const RX={u:/^[a-z0-9_]{3,20}$/,p:/^0[567]\d{8}$/,e:/^\S+@\S+\.\S+$/};
 const logo=z=>`<img src="${z>=60?'/assets/logo-512.png':'/assets/logo-mark.png'}" width="${z}" height="${z}" alt="ELDOOB" style="border-radius:50%;vertical-align:middle">`;
 const pic=(n,z=48,x='')=>`<img src="/assets/i-${n}.png" width="${z}" height="${z}" alt="" style="vertical-align:middle;border-radius:50%;${x}">`;
 const emptyPic=(n,m)=>`<div class="empty">${pic(n,110)}<div style="margin-top:8px">${m}</div></div>`;
-const S={scr:'land',rd:null,fe:'',rt:'',user:null,tab:'home',q:'',wallet:{b:0,e:0,p:0},P:[],O:[],W:[],G:{w:{},c:{}},pushOn:false,ann:{text:''},ad:null,qsort:'new',qav:false};
-let TOKEN=null;try{TOKEN=sessionStorage.getItem('eldoob-token')}catch(e){}
-const saveToken=t=>{TOKEN=t;try{sessionStorage.setItem('eldoob-token',t)}catch(e){}};
+const S={scr:'land',rd:null,fe:'',rt:'',user:null,tab:'home',q:'',wallet:{b:0,e:0,p:0},P:[],O:[],W:[],G:{w:{},c:{}},pushOn:false,ann:{text:''},ad:null,qsort:'new',qav:false,aff:null,afq:'',aff_f:'all'};
+let TOKEN=null;try{TOKEN=localStorage.getItem('eldoob-token')||sessionStorage.getItem('eldoob-token')}catch(e){}
+const saveToken=(t,rem)=>{TOKEN=t;try{localStorage.removeItem('eldoob-token');sessionStorage.removeItem('eldoob-token');(rem?localStorage:sessionStorage).setItem('eldoob-token',t)}catch(e){}};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const isAdm=()=>S.user&&S.user.role=='adm',isAff=()=>S.user&&S.user.role=='aff';
@@ -59,8 +59,8 @@ const mO=o=>({id:o.id,cust:o.customer_name,phone:o.customer_phone,wil:o.wilaya,c
 const mW=p=>({id:p.id,a:p.amount,m:PM_IN[p.method]||p.method,st:PS_IN[p.status]||p.status,an:p.affiliate||'',ph:p.phone||'',pa:p.account,d:new Date(p.created_at).toLocaleDateString('ar-DZ'),fid:p.front_id,bid:p.back_id,nt:p.admin_note||''});
 async function load(){
  const adm=isAdm(),needGeo=!isAdm()&&!Object.keys(S.G.w).length;
- const [P,O,x,geo,an,ad]=await Promise.all([api('GET','/products'),api('GET','/orders'),api('GET',adm?'/admin/payouts':'/wallet'),needGeo?api('GET','/geo'):null,api('GET','/announcement').catch(()=>null),adm?api('GET','/admin/stats').catch(()=>null):null]);
- S.P=P.map(mP).filter(p=>p.active);S.O=O.map(mO);S.ann=an&&an.text?{text:an.text}:{text:''};S.ad=ad;
+ const [P,O,x,geo,an,ad,af]=await Promise.all([api('GET','/products'),api('GET','/orders'),api('GET',adm?'/admin/payouts':'/wallet'),needGeo?api('GET','/geo'):null,api('GET','/announcement').catch(()=>null),adm?api('GET','/admin/stats').catch(()=>null):null,adm&&S.tab=='aaff'?api('GET','/admin/affiliates/overview').catch(()=>null):null]);
+ S.P=P.map(mP).filter(p=>p.active);S.O=O.map(mO);S.ann=an&&an.text?{text:an.text}:{text:''};S.ad=ad;if(af)S.aff=af;
  if(adm)S.W=x.map(mW);else{S.W=x.payouts.map(mW);S.wallet={b:x.balance,e:x.total_earned,p:x.pending_balance};S.idOk=!!x.id_ok}
  if(geo){geo.wilayas.forEach(w=>S.G.w[w.code]={c:w.code,n:w.name_ar,desk:w.desk_fee,home:w.home_fee,av:w.available});S.G.c=geo.communes}}
 async function boot(keep){
@@ -68,7 +68,7 @@ async function boot(keep){
  S.user={id:m.id,role:m.role=='admin'?'adm':'aff',name:m.full_name,username:m.username||'',av:m.avatar_url||'',phone:m.phone,email:m.email||'',pm:PM_IN[m.payout_method]||'Flexy',pa:m.payout_account||''};
  if(!keep)S.tab=isAdm()?'adash':'home';
  await load();render();pushState()}
-function logout(){TOKEN=null;try{sessionStorage.removeItem('eldoob-token')}catch(e){}S.user=null;S.scr='land';S.G={w:{},c:{}};closeSheet();render()}
+function logout(){TOKEN=null;try{sessionStorage.removeItem('eldoob-token');localStorage.removeItem('eldoob-token')}catch(e){}S.user=null;S.scr='land';S.G={w:{},c:{}};closeSheet();render()}
 const toBlob=u=>{const[h,b]=u.split(','),bin=atob(b),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:h.match(/:(.*?);/)[1]})};
 const shrink=(f,max,sq)=>new Promise((ok,no)=>{const rd=new FileReader();rd.onload=()=>{const im=new Image();im.onload=()=>{let sx=0,sy=0,sw=im.width,sh=im.height,w,h;
  if(sq){const s=Math.min(sw,sh);sx=(sw-s)/2;sy=(sh-s)/2;sw=sh=s;w=h=max}else{const k=Math.min(1,max/Math.max(sw,sh));w=Math.round(sw*k);h=Math.round(sh*k)}
@@ -152,12 +152,24 @@ const statsV=()=>{const O=S.O;if(!O.length)return emptyPic('bear-cart','لا ت�
 <div class="card"><h3>الأرباح</h3><div class="o"><span>آخر 7 أيام</span><b style="color:var(--ok)">${fmt(rec(7))}</b></div><div class="o"><span>آخر 30 يوماً</span><b style="color:var(--ok)">${fmt(rec(30))}</b></div><div class="o"><span>إجمالي أرباحك المستلمة</span><b class="pr">${fmt(S.wallet.e)}</b></div><div class="mute">أرباح 7 و30 يوماً محسوبة للطلبات المسلّمة حسب تاريخ إنشاء الطلب.</div></div>
 <div class="card"><h3>حالة طلباتك</h3>${bar('مسلّمة',dl.length,'var(--ok)')}${bar('قيد التنفيذ',open,'var(--ac)')}${bar('ملغاة أو مرتجعة',fail,'var(--bad)')}</div>
 <div class="card"><h3>أفضل منتجاتك مبيعاً</h3>${top.length?top.map(([n,q],i)=>`<div class="o"><span>${i+1}. ${esc(n)}</span><b>${q} قطعة</b></div>`).join(''):'<div class="mute">لم تُسلَّم أي طلبات بعد.</div>'}</div>`};
+const agoS=s=>s==null?'لم يسجّل نشاطاً بعد':Number(s)<60?'الآن':Number(s)<3600?'قبل '+Math.floor(s/60)+' دقيقة':Number(s)<86400?'قبل '+Math.floor(s/3600)+' ساعة':'قبل '+Math.floor(s/86400)+' يوم';
+const afOn=a=>a.is_active&&a.idle_s!=null&&Number(a.idle_s)<300;
+const afIdle=a=>a.is_active&&(a.idle_s==null||Number(a.idle_s)>=604800);
+const afF=()=>{const q=(S.afq||'').trim().toLowerCase(),f=S.aff_f||'all';return(S.aff||[]).filter(a=>(f=='all'||(f=='on'&&afOn(a))||(f=='day'&&a.today)||(f=='idle'&&afIdle(a))||(f=='off'&&!a.is_active))&&(!q||(a.full_name+' '+a.username+' '+a.phone+' '+a.email).toLowerCase().includes(q)))};
+const afCard=a=>`<div class="card"><div class="ph"><b>${esc(a.full_name)}</b>${!a.is_active?'<span class="tag t-Rejected">موقوف</span>':afOn(a)?'<span class="tag t-Delivered">نشط الآن</span>':''}</div><div class="mute"><span dir="ltr">@${esc(a.username)}</span> — <a href="tel:${esc(a.phone)}" dir="ltr" style="color:var(--ac2)">${esc(a.phone)}</a></div><div class="mute" dir="ltr" style="text-align:start">${esc(a.email)}</div>
+<div class="pinfo"><div><span class="l">آخر نشاط</span><b>${agoS(a.idle_s)}</b></div><div><span class="l">تاريخ التسجيل</span><span>${String(a.created_at).slice(0,10).replace(/-/g,'/')}</span></div><div><span class="l">الطلبات</span><b>${Number(a.orders)} (مسلّمة ${Number(a.delivered)})</b></div><div><span class="l">الرصيد</span><b class="pr">${fmt(Number(a.balance))}</b></div></div>
+<button class="btn sm ${a.is_active?'rj':'ok'}" style="width:100%" data-aft="${a.id}:${a.is_active?'reject':'approve'}">${a.is_active?'إيقاف الحساب':'تفعيل الحساب'}</button></div>`;
+const afCards=()=>{const l=afF();return l.length?l.map(afCard).join(''):'<div class="empty">لا توجد نتائج</div>'};
+const affV=()=>{const L=S.aff;if(!L)return '<div class="empty">جاري تحميل المسوّقين…</div>';
+ const on=L.filter(afOn).length,day=L.filter(a=>a.today).length,f=S.aff_f||'all';
+ return `<button class="bk" data-affb="1">${ic('chev',18)} رجوع</button><div class="sec">المسوّقون</div><div class="stat"><div><b>${L.length}</b><span>الإجمالي</span></div><div><b>${on}</b><span>نشط الآن</span></div><div><b>${day}</b><span>دخلوا اليوم</span></div></div>
+<input id="aq" type="search" placeholder="ابحث بالاسم أو اسم المستخدم أو الهاتف" value="${esc(S.afq||'')}" style="margin-bottom:8px"><div class="chips" style="margin:0 0 12px">${[['all','الكل',L.length],['on','نشط الآن',on],['day','اليوم',day],['idle','غير نشط +7 أيام',L.filter(afIdle).length],['off','موقوف',L.filter(a=>!a.is_active).length]].map(([k,l,n])=>`<button type="button" class="cp${f==k?' on':''}" data-af="${k}">${l} (${n})</button>`).join('')}</div><div id="afl">${afCards()}</div>`};
 const adashV=()=>{const a=S.ad,n=v=>Number(v||0);
  const st=a?`<div class="sec">نظرة عامة</div><div class="stat"><div><b>${n(a.orders.today)}</b><span>طلبات اليوم</span></div><div><b>${n(a.orders.pending)}</b><span>قيد المراجعة</span></div><div><b>${n(a.orders.shipped)}</b><span>قيد الشحن</span></div></div>
-<div class="card"><div class="o"><span>سحوبات معلّقة</span><b>${n(a.payouts.n)} (${fmt(n(a.payouts.total))})</b></div><div class="o"><span>أرصدة المسوّقين (مستحقاتهم)</span><b>${fmt(n(a.owed))}</b></div><div class="o"><span>مبيعات آخر 30 يوماً (مسلّمة)</span><b class="pr">${fmt(n(a.orders.sales30))}</b></div><div class="o"><span>مسلّمة / ملغاة أو مرتجعة</span><b>${n(a.orders.delivered)} / ${n(a.orders.failed)}</b></div><div class="o"><span>المسوّقون: نشط / بانتظار الموافقة</span><b>${n(a.aff.active)} / ${n(a.aff.waiting)}</b></div></div>
+<div class="card"><div class="o"><span>سحوبات معلّقة</span><b>${n(a.payouts.n)} (${fmt(n(a.payouts.total))})</b></div><div class="o"><span>أرصدة المسوّقين (مستحقاتهم)</span><b>${fmt(n(a.owed))}</b></div><div class="o"><span>مبيعات آخر 30 يوماً (مسلّمة)</span><b class="pr">${fmt(n(a.orders.sales30))}</b></div><div class="o"><span>مسلّمة / ملغاة أو مرتجعة</span><b>${n(a.orders.delivered)} / ${n(a.orders.failed)}</b></div><div class="o"><span>المسوّقون: نشط / بانتظار الموافقة</span><b>${n(a.aff.active)} / ${n(a.aff.waiting)}</b></div><div class="o"><span>نشط الآن (آخر 5 دقائق)</span><b style="color:var(--ok)">${n(a.aff.online)}</b></div><div class="o"><span>دخلوا اليوم</span><b>${n(a.aff.today)}</b></div></div>
 <div class="card"><h3>أفضل المسوّقين</h3>${a.top.length?a.top.map((t,i)=>`<div class="o"><span>${i+1}. ${esc(t.name)}<div class="mute">${n(t.delivered)} مسلّمة من ${n(t.orders)}</div></span><b style="color:var(--ok)">${fmt(n(t.earned))}</b></div>`).join(''):'<div class="mute">لا توجد بيانات بعد.</div>'}</div>`:'<div class="empty">تعذّر تحميل الإحصائيات</div>';
  const low=S.P.filter(p=>p.stock<5).sort((x,y)=>x.stock-y.stock),lw=`<div class="card"><h3>منتجات توشك على النفاد</h3>${low.length?low.map(p=>`<div class="o"><span>${esc(p.t)}</span>${stkS(p)}</div>`).join(''):'<div class="mute">كل المنتجات متوفرة بكميات كافية.</div>'}</div>`;
- return st+lw+`<div class="card"><h3>إعلان لكل المسوّقين</h3><label>نص الإعلان (يظهر أعلى الرئيسية)<textarea id="annt" maxlength="400" rows="3" placeholder="مثال: وصل منتج جديد اليوم">${esc(S.ann.text)}</textarea></label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn sm" id="annp">نشر</button><button class="btn sm dk" id="annn">نشر مع إشعار</button>${S.ann.text?'<button class="btn sm gh" id="annd">حذف الإعلان</button>':''}</div></div>
+ return st+`<button class="btn" style="margin-bottom:12px" data-aff="1">قائمة المسوّقين وآخر نشاطهم</button>`+lw+`<div class="card"><h3>إعلان لكل المسوّقين</h3><label>نص الإعلان (يظهر أعلى الرئيسية)<textarea id="annt" maxlength="400" rows="3" placeholder="مثال: وصل منتج جديد اليوم">${esc(S.ann.text)}</textarea></label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn sm" id="annp">نشر</button><button class="btn sm dk" id="annn">نشر مع إشعار</button>${S.ann.text?'<button class="btn sm gh" id="annd">حذف الإعلان</button>':''}</div></div>
 <div class="card"><h3>نسخة احتياطية</h3><div class="mute" style="margin-bottom:8px">ملف فيه كل الطلبات والسحوبات والأرصدة والمنتجات والمسوّقين (بدون كلمات السر وصور الهوية). احفظه في مكان خاص.</div><button class="btn sm dk" id="bkgo">${ic('dl',16)} تحميل نسخة احتياطية</button></div>`};
 async function doAnn(notify){const t=$('#annt').value.trim();if(!t)return toast('اكتب نص الإعلان أولاً','bad');await api('PUT','/admin/announcement',{text:t,notify});await refresh(notify?'نُشر الإعلان وأُرسل الإشعار':'تم نشر الإعلان')}
 async function delAnn(){await api('PUT','/admin/announcement',{text:''});await refresh('تم حذف الإعلان')}
@@ -180,9 +192,9 @@ function render(){
  if(!u){b.innerHTML=({login:loginV,reg:regV,otp:otpV,forgot:forgotV,fcode:fcodeV,freset:fresetV,lcode:lcodeV,lverify:lverifyV}[S.scr]||landV)();return}
  $('#av').innerHTML=u.av?`<img src="${esc(u.av)}" alt="">`:(isAdm()?pic('shield',36):pic('bear-thumb',36));$('#nm').textContent=u.name;$('#rl').textContent=isAdm()?'مدير':'مسوّق';$('#ci').innerHTML=ic('wallet',18);
  $('#cm').hidden=isAdm();if(isAff())$('#cv').textContent=fmt(S.wallet.b);
- $('#nav').innerHTML=NAV[u.role].map(([k,i,l])=>`<button data-n="${k}" class="${(S.tab==k||(k=='more'&&['deliv','help','tuts','acct','stats'].includes(S.tab))||(['prod','buy'].includes(S.tab)&&S.from==k))?'on':''}"><span style="display:flex;justify-content:center">${ic(i,22)}</span>${l}${k=='apay'&&reqN()?` (${reqN()})`:''}</button>`).join('');
- const V={home:homeV,fav:favV,prod:prodV,buy:buyV,more,acct,tuts,search,help,deliv,profile,orders,wallet,aord,apay,aprod,photo:photoV,stats:statsV,adash:adashV};
- const adminTabs=['aord','apay','aprod','adash'];
+ $('#nav').innerHTML=NAV[u.role].map(([k,i,l])=>`<button data-n="${k}" class="${(S.tab==k||(k=='more'&&['deliv','help','tuts','acct','stats'].includes(S.tab))||(['prod','buy'].includes(S.tab)&&S.from==k)||(S.tab=='aaff'&&k=='adash'))?'on':''}"><span style="display:flex;justify-content:center">${ic(i,22)}</span>${l}${k=='apay'&&reqN()?` (${reqN()})`:''}</button>`).join('');
+ const V={home:homeV,fav:favV,prod:prodV,buy:buyV,more,acct,tuts,search,help,deliv,profile,orders,wallet,aord,apay,aprod,photo:photoV,stats:statsV,adash:adashV,aaff:affV};
+ const adminTabs=['aord','apay','aprod','adash','aaff'];
  if(adminTabs.includes(S.tab)&&!isAdm())S.tab='home';
  if(isAdm()&&!adminTabs.includes(S.tab))S.tab='aord';
  if(!V[S.tab])S.tab=isAdm()?'aord':'home';
@@ -223,7 +235,7 @@ const steps=n=>`<div class="steps">${[1,2,3].map(i=>`<i class="${i<=n?'on':''}">
 const wrapV=(title,sub,body,back)=>`<div style="padding:16px 4px"><div style="text-align:center">${logo(64)}<h2 style="margin:6px 0 4px">${title}</h2>${sub?`<p class="mute" style="margin:0 0 12px">${sub}</p>`:'<div style="height:10px"></div>'}</div><div class="card">${body}</div>${back?`<button class="link" data-g="${back}">رجوع</button>`:''}</div>`;
 const codeIn=id=>`<label>رمز التحقق<input id="${id}" inputmode="numeric" maxlength="6" autocomplete="one-time-code" dir="ltr" style="text-align:center;font-size:22px;letter-spacing:6px"></label>`;
 const landV=()=>`<div style="background:linear-gradient(180deg,#0b1a44,#070d1f);border:1px solid var(--line);border-radius:26px;padding:64px 18px;text-align:center;display:flex;flex-direction:column;gap:14px;margin-top:16px"><div style="display:flex;justify-content:center">${logo(190)}</div><h1 style="margin:0 0 20px;letter-spacing:3px;color:var(--ac2);text-shadow:var(--glow)">ELDOOB.DZ</h1><button class="btn" data-g="login">تسجيل الدخول</button><button class="btn gh" data-g="reg">انضم إلينا كمسوّق</button></div>`;
-const loginV=()=>wrapV('تسجيل الدخول','',`<label>البريد الإلكتروني أو اسم المستخدم<input id="lp" dir="ltr" autocapitalize="none" autocomplete="username"></label><label>كلمة المرور<input id="lw" type="password" autocomplete="current-password"></label><button class="btn" id="lgo">دخول</button><button class="link" data-g="lcode" style="display:block;margin:12px auto 0">دخول بالرمز (بدون كلمة سر)</button><button class="link" data-g="forgot" style="display:block;margin:6px auto 0">نسيت كلمة السر؟</button>`,'land');
+const loginV=()=>wrapV('تسجيل الدخول','',`<label>البريد الإلكتروني أو اسم المستخدم<input id="lp" dir="ltr" autocapitalize="none" autocomplete="username"></label><label>كلمة المرور<input id="lw" type="password" autocomplete="current-password"></label><label class="chk"><input type="checkbox" id="lrem" checked><span>تذكرني على هذا الجهاز</span></label><button class="btn" id="lgo">دخول</button><button class="link" data-g="lcode" style="display:block;margin:12px auto 0">دخول بالرمز (بدون كلمة سر)</button><button class="link" data-g="forgot" style="display:block;margin:6px auto 0">نسيت كلمة السر؟</button>`,'land');
 const regV=()=>wrapV('انضم إلينا كمسوّق','',`<label>الاسم الكامل<input id="rn"></label><label>اسم المستخدم (a-z وأرقام و _)<input id="ru" dir="ltr" autocapitalize="none" autocomplete="off"></label><div id="ruS" style="min-height:22px;font-size:13px;margin:-4px 0 8px"></div><label>رقم الهاتف<input id="rp" inputmode="tel" placeholder="05XXXXXXXX"></label><label>البريد الإلكتروني<input id="re" type="email" dir="ltr"></label><label>كلمة المرور (8 أحرف فأكثر)<input id="rw" type="password"></label><button class="btn" id="rgo">إرسال رمز التأكيد</button>`,'land');
 const otpV=()=>wrapV('تأكيد البريد الإلكتروني',`أرسلنا رمزاً من 6 أرقام إلى<br><b dir="ltr">${esc(S.rd.email)}</b>`,`${codeIn('oc')}<button class="btn" id="ogo">تأكيد وإنشاء الحساب</button><button class="link" id="ors" style="display:block;margin:10px auto 0">إعادة إرسال الرمز</button>`,'reg');
 const forgotV=()=>wrapV('نسيت كلمة السر؟','أدخل بريدك وسنرسل إليه رمز التحقق.',`${steps(1)}<label>البريد الإلكتروني<input id="fe" type="email" dir="ltr"></label><button class="btn" id="fgo">إرسال الرمز</button>`,'login');
@@ -232,7 +244,7 @@ const fresetV=()=>wrapV('كلمة سر جديدة','تم التحقق من ال�
 const lcodeV=()=>wrapV('دخول بالرمز','سنرسل رمزاً إلى بريدك وتدخل به مباشرة.',`<label>البريد الإلكتروني<input id="le" type="email" dir="ltr"></label><button class="btn" id="lcs">إرسال الرمز</button>`,'login');
 const lverifyV=()=>wrapV('أدخل الرمز',`الرمز أُرسل إلى<br><b dir="ltr">${esc(S.fe)}</b>`,`${codeIn('lc')}<button class="btn" id="lcv">دخول</button><button class="link" data-rs="login" style="display:block;margin:10px auto 0">إعادة إرسال الرمز</button>`,'lcode');
 
-async function doLogin(){const d=await api('POST','/auth/login',{identifier:$('#lp').value.trim().toLowerCase(),password:$('#lw').value});saveToken(d.token);await boot()}
+async function doLogin(){const d=await api('POST','/auth/login',{identifier:$('#lp').value.trim().toLowerCase(),password:$('#lw').value,remember:$('#lrem').checked});saveToken(d.token,$('#lrem').checked);await boot()}
 async function doReg(){const n=$('#rn').value.trim(),us=$('#ru').value.trim().toLowerCase(),p=$('#rp').value.replace(/\s/g,''),e=$('#re').value.trim().toLowerCase(),w=$('#rw').value;
  const bad=m=>toast(m,'bad');
  if(S.unOk===false)return bad('اسم المستخدم محجوز، اختر اسماً آخر');
@@ -347,6 +359,10 @@ document.addEventListener('click',e=>{const t=e.target,c=s=>t.closest(s);let x;
  if(c('[data-out]'))return confirmOut();
  if(x=c('[data-un]')){const i=$('#ru');i.value=x.dataset.un;unCheck(i.value);return}
  if(x=c('[data-g]')){S.scr=x.dataset.g;S.unOk=null;return render()}
+ if(c('[data-aff]'))return run(async()=>{S.aff=await api('GET','/admin/affiliates/overview');S.tab='aaff';render();scrollTo(0,0)});
+ if(c('[data-affb]')){S.tab='adash';render();return scrollTo(0,0)}
+ if(x=c('[data-af]')){S.aff_f=x.dataset.af;return render()}
+ if(x=c('[data-aft]')){const[i,a]=x.dataset.aft.split(':');if(!confirm(a=='reject'?'سيتم إيقاف هذا الحساب وسيخرج من الموقع فوراً. متأكد؟':'تفعيل هذا الحساب؟'))return;return run(async()=>{await api('PATCH','/admin/users/'+i,{action:a});S.aff=await api('GET','/admin/affiliates/overview');render();toast('تم التحديث','ok')})}
  if(x=c('[data-of]')){S.ost=x.dataset.of;return render()}
  if(x=c('[data-co]')){const o=S.O.find(z=>z.id==x.dataset.co);if(o)copyTxt(orderTxt(o),'تم نسخ بيانات الطلب');return}
  if(x=c('[data-mg]')){const p=pid(S.cp),v=x.dataset.mg=='sug'?Number(p.sug):Number(p.base)+Number(x.dataset.mg);$('#op').value=Math.max(v,Number(p.base));return sumUpd()}
@@ -392,6 +408,7 @@ document.addEventListener('click',e=>{const t=e.target,c=s=>t.closest(s);let x;
 document.addEventListener('input',e=>{const i=e.target.id;
  if(i=='ru'){e.target.value=e.target.value.toLowerCase().replace(/\s/g,'');unCheck(e.target.value)}
  if(i=='q'){S.q=e.target.value;res()}
+  if(i=='aq'){S.afq=e.target.value;const L=$('#afl');if(L)L.innerHTML=afCards()}
   if(i=='oq2'){S.oq=e.target.value;const L=$('#olist');if(L)L.innerHTML=isAdm()?aordCards():ordCards()}
   if(i=='oc2')phoneCheck(e.target.value);
  if(['oq','op'].includes(i))sumUpd()});
