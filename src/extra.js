@@ -15,6 +15,7 @@ export function mount(app, H) {
   const ready2 = pool.query(`CREATE TABLE IF NOT EXISTS private_uploads (id uuid PRIMARY KEY, user_id bigint NOT NULL, mime text NOT NULL, data bytea NOT NULL, created_at timestamptz DEFAULT now())`)
     .then(() => pool.query(`CREATE TABLE IF NOT EXISTS id_documents (user_id bigint PRIMARY KEY, front_id uuid NOT NULL, back_id uuid NOT NULL, created_at timestamptz DEFAULT now())`))
     .then(() => pool.query('ALTER TABLE payout_requests ADD COLUMN IF NOT EXISTS admin_note text'))
+    .then(() => pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at timestamptz'))
     .then(() => pool.query('CREATE TABLE IF NOT EXISTS site_settings (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz DEFAULT now())'))
     .catch(e => console.error('id tables:', e.message));
   const IMG = { 'image/jpeg': 1, 'image/png': 1, 'image/webp': 1 };
@@ -207,6 +208,7 @@ export function mount(app, H) {
 
   /* ───── إحصائيات المدير + نسخة احتياطية ───── */
   app.get('/api/admin/stats', ...admin, wrap(async (_req, res) => {
+    await ready2;
     const q = sql => pool.query(sql);
     const [o, pay, bal, top, aff] = await Promise.all([
       q(`SELECT count(*) FILTER (WHERE created_at >= date_trunc('day', now())) AS today,
@@ -221,9 +223,21 @@ export function mount(app, H) {
       q(`SELECT u.full_name AS name, count(*) AS orders, count(*) FILTER (WHERE o.status::text = 'delivered') AS delivered,
                 COALESCE(sum(o.profit_amount) FILTER (WHERE o.status::text = 'delivered'), 0) AS earned
          FROM orders o JOIN users u ON u.id = o.affiliate_id GROUP BY u.id, u.full_name ORDER BY earned DESC, orders DESC LIMIT 5`),
-      q(`SELECT count(*) FILTER (WHERE is_active) AS active, count(*) FILTER (WHERE NOT is_active AND rejected_at IS NULL) AS waiting FROM users WHERE role = 'affiliate'`),
+      q(`SELECT count(*) FILTER (WHERE is_active) AS active, count(*) FILTER (WHERE NOT is_active AND rejected_at IS NULL) AS waiting, count(*) FILTER (WHERE is_active AND last_seen_at > now() - interval '5 minutes') AS online, count(*) FILTER (WHERE is_active AND (last_seen_at AT TIME ZONE 'Africa/Algiers')::date = (now() AT TIME ZONE 'Africa/Algiers')::date) AS today FROM users WHERE role = 'affiliate'`),
     ]);
     res.json({ orders: o.rows[0], payouts: pay.rows[0], owed: bal.rows[0].owed, top: top.rows, aff: aff.rows[0] });
+  }));
+  app.get('/api/admin/affiliates/overview', ...admin, wrap(async (_req, res) => {
+    await ready2;
+    const { rows } = await pool.query(`SELECT u.id, u.full_name, u.username, u.phone, u.email, u.is_active, u.created_at,
+        EXTRACT(EPOCH FROM (now() - u.last_seen_at))::bigint AS idle_s,
+        ((u.last_seen_at AT TIME ZONE 'Africa/Algiers')::date = (now() AT TIME ZONE 'Africa/Algiers')::date) AS today,
+        COALESCE(ab.balance, 0) AS balance,
+        (SELECT count(*) FROM orders o WHERE o.affiliate_id = u.id) AS orders,
+        (SELECT count(*) FROM orders o WHERE o.affiliate_id = u.id AND o.status::text = 'delivered') AS delivered
+      FROM users u LEFT JOIN affiliate_balances ab ON ab.affiliate_id = u.id
+      WHERE u.role = 'affiliate' ORDER BY u.last_seen_at DESC NULLS LAST, u.id DESC`);
+    res.json(rows);
   }));
   app.get('/api/admin/export', ...admin, wrap(async (_req, res) => {
     const t = async sql => (await pool.query(sql)).rows;
