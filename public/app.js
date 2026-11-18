@@ -170,9 +170,9 @@ const reqN=()=>S.W.filter(p=>p.st=='Requested'||p.st=='Processing').length;
 function render(){
  const u=S.user,b=$('#body');clearInterval(GT);
  $('#top').hidden=$('#nav').hidden=$('#brand').hidden=$('#tt').hidden=!u;
- if(u)$('#brand').innerHTML=logo(30)+'<b>ELDOOB.DZ</b><small>متجر الدب</small>';
+ if(u)$('#brand').innerHTML=logo(36);
  if(!u){b.innerHTML=({login:loginV,reg:regV,otp:otpV,forgot:forgotV,fcode:fcodeV,freset:fresetV,lcode:lcodeV,lverify:lverifyV}[S.scr]||landV)();return}
- $('#av').innerHTML=u.av?`<img src="${esc(u.av)}" alt="">`:(isAdm()?pic('shield',36):pic('bear-thumb',36));$('#nm').textContent=u.name+(isAdm()?' — مدير':' — مسوّق');
+ $('#av').innerHTML=u.av?`<img src="${esc(u.av)}" alt="">`:(isAdm()?pic('shield',36):pic('bear-thumb',36));$('#nm').textContent=u.name;$('#rl').textContent=isAdm()?'مدير':'مسوّق';$('#ci').innerHTML=ic('wallet',18);
  $('#cm').hidden=isAdm();if(isAff())$('#cv').textContent=fmt(S.wallet.b);
  $('#nav').innerHTML=NAV[u.role].map(([k,i,l])=>`<button data-n="${k}" class="${(S.tab==k||(k=='more'&&['deliv','help','tuts','acct','stats'].includes(S.tab))||(['prod','buy'].includes(S.tab)&&S.from==k))?'on':''}"><span style="display:flex;justify-content:center">${ic(i,22)}</span>${l}${k=='apay'&&reqN()?` (${reqN()})`:''}</button>`).join('');
  const V={home:homeV,fav:favV,prod:prodV,buy:buyV,more,acct,tuts,search,help,deliv,profile,orders,wallet,aord,apay,aprod,photo:photoV,stats:statsV,adash:adashV};
