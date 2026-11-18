@@ -104,6 +104,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:var(--
 .note{margin-top:8px;padding:8px 10px;border-radius:12px;background:#1b2a4d;border-inline-start:3px solid var(--gold);color:#e8eeff;font-size:13px;line-height:1.6;white-space:pre-line}
 .cpr{flex-wrap:wrap;gap:8px}.cp.on{border-color:var(--ac);color:#fff;background:#10294f}
 .ann{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;margin-bottom:12px;border-radius:var(--r);background:linear-gradient(135deg,#3a2f0e,#1b2a4d);border:1px solid #6b5a1f;line-height:1.6;white-space:pre-line}.ann button{background:none;border:0;color:var(--mu);cursor:pointer;padding:0}
+.pcard .ph{display:flex;justify-content:space-between;align-items:center;gap:8px}.pamt{font-size:26px;font-weight:800;color:var(--gold);line-height:1.3;margin-top:4px}
+.pinfo{margin:10px 0;border:1px solid var(--line);border-radius:14px;overflow:hidden}.pinfo>div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line)}.pinfo>div:last-child{border:0}.pinfo .l{color:var(--mu);font-size:13px}.pinfo a{color:var(--ac2)}
+.pinfo .acc{flex-wrap:wrap}.pinfo .acc b{font-size:15px;letter-spacing:.5px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pacts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.pacts .btn{width:100%;margin:0}.pacts .full{grid-column:1/-1}
+.btn.ok{background:linear-gradient(135deg,#2bd99b,var(--ok));color:#04281c;box-shadow:none}.btn.rj{background:none;border:1px solid var(--bad);color:var(--bad);box-shadow:none}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -113,6 +119,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:var(--
 <nav id="nav" hidden></nav>
 <div id="sheet" hidden><div class="in" id="sin"></div></div>
 <div id="toast" class="toast" hidden></div>
-<script src="/app.js?v=9"></script>
+<script src="/app.js?v=10"></script>
 </body>
 </html>
