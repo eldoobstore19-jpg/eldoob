@@ -59,6 +59,10 @@ const opt = (v, f) => (v === undefined ? null : f(v));
 async function tx(fn) { const c = await pool.connect(); try { await c.query('BEGIN'); const out = await fn(c); await c.query('COMMIT'); return out; } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); } }
 const payAcct = (m, a) => { a = String(a).replace(/\s/g, ''); if (m === 'flexy' && !/^0[567]\d{8}$/.test(a)) throw bad('رقم فليكسي غير صالح (مثال: 0550000000)'); if (m === 'baridimob' && !/^\d{20}$/.test(a)) throw bad('رقم RIP يجب أن يكون 20 رقماً بالضبط'); return a.slice(0, 40); };
 
+// آخر نشاط للمستخدم (يُحدَّث بحد أقصى مرة كل دقيقة لكل مستخدم، ويفشل بصمت إن لم يكن العمود جاهزاً)
+const seenAt = new Map();
+function touchSeen(id) { const n = Date.now(); if (n - (seenAt.get(id) || 0) < 60000) return; seenAt.set(id, n); pool.query('UPDATE users SET last_seen_at = now() WHERE id = $1', [id]).catch(() => {}); }
+
 const auth = wrap(async (req, _res, next) => {
   const token = (req.headers.authorization || '').replace(/^Bearer /, '');
   let p;
@@ -67,6 +71,7 @@ const auth = wrap(async (req, _res, next) => {
   if (!u || !u.is_active) throw bad('الحساب غير مفعّل', 401);
   if (p.iat < Math.floor(new Date(u.password_changed_at).getTime() / 1000)) throw bad('تغيّرت كلمة السر. سجّل الدخول من جديد', 401);
   req.user = { id: u.id, role: u.role };
+  touchSeen(u.id);
   next();
 });
 const only = role => (req, _res, next) => (req.user.role === role ? next() : next(bad('غير مسموح', 403)));
@@ -78,7 +83,7 @@ const DUMMY = bcrypt.hashSync('dummy-password', 12);
 const USERNAME = /^[a-z0-9_]{3,20}$/, PHONE = /^0[567]\d{8}$/, EMAIL = /^\S+@\S+\.\S+$/;
 const otpHash = (email, code) => crypto.createHmac('sha256', SECRET).update(`${email}:${code}`).digest('hex');
 const mail = (to, subject, body) => pool.query('INSERT INTO email_outbox (to_email, subject, body) VALUES ($1, $2, $3)', [to, subject, body]);
-const token = id => jwt.sign({ id }, SECRET, { expiresIn: '12h' });
+const token = (id, exp = '12h') => jwt.sign({ id }, SECRET, { expiresIn: exp });
 const email_ = v => { const e = str(v, 'البريد الإلكتروني', 120).toLowerCase(); if (!EMAIL.test(e)) throw bad('بريد إلكتروني غير صالح'); return e; };
 const password_ = v => { const s = str(v, 'كلمة المرور', 72); if (s.length < 8) throw bad('كلمة المرور 8 أحرف على الأقل'); return s; };
 const username_ = v => { const s = str(v, 'اسم المستخدم', 20).toLowerCase(); if (!USERNAME.test(s)) throw bad('اسم المستخدم: 3 إلى 20 حرفاً'); return s; };
@@ -129,7 +134,8 @@ app.post('/api/auth/login', authLimiter, wrap(async (req, res) => {
   const ok = await bcrypt.compare(String(req.body.password || ''), u ? u.password_hash : DUMMY);
   if (!u || !ok) throw bad('بيانات الدخول غير صحيحة', 401);
   if (!u.is_active) throw bad('هذا الحساب معطّل', 403);
-  res.json({ token: token(u.id), user: { id: u.id, role: u.role, full_name: u.full_name } });
+  const exp = req.body.remember === true ? (u.role === 'admin' ? '7d' : '30d') : '12h'; // «تذكرني»: 30 يوماً للمسوّق، 7 أيام للمدير
+  res.json({ token: token(u.id, exp), user: { id: u.id, role: u.role, full_name: u.full_name } });
 }));
 
 app.get('/api/me', auth, wrap(async (req, res) => {
