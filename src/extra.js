@@ -197,6 +197,14 @@ export function mount(app, H) {
     res.json({ ok: true });
   }));
 
+  /* ───── فحص سمعة رقم الزبون (أعداد فقط) ───── */
+  app.get('/api/phone-check', auth, wrap(async (req, res) => {
+    const ph = String(req.query.phone || '').replace(/\s/g, '');
+    if (!/^0[567]\d{8}$/.test(ph)) throw bad('رقم غير صالح');
+    const { rows: [r] } = await pool.query("SELECT count(*) FILTER (WHERE status::text = 'delivered') AS delivered, count(*) FILTER (WHERE status::text IN ('retour', 'cancelled')) AS bad FROM orders WHERE customer_phone = $1", [ph]);
+    res.json({ delivered: Number(r.delivered), bad: Number(r.bad) });
+  }));
+
   /* ───── إحصائيات المدير + نسخة احتياطية ───── */
   app.get('/api/admin/stats', ...admin, wrap(async (_req, res) => {
     const q = sql => pool.query(sql);
