@@ -110,15 +110,24 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:var(--
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .pacts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.pacts .btn{width:100%;margin:0}.pacts .full{grid-column:1/-1}
 .btn.ok{background:linear-gradient(135deg,#2bd99b,var(--ok));color:#04281c;box-shadow:none}.btn.rj{background:none;border:1px solid var(--bad);color:var(--bad);box-shadow:none}
+#top{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px}
+#tt{display:flex;align-items:center;gap:10px;min-width:0}
+#tt .av{width:42px;height:42px;border:2px solid var(--gold);box-shadow:0 0 0 3px rgba(255,207,92,.12)}
+#tt .who{display:flex;flex-direction:column;min-width:0;line-height:1.35}
+#nm{font-size:15px;font-weight:800;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+#rl{font-size:11px;color:var(--mu)}
+#brand{display:none!important}
+#cm{display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;background:linear-gradient(135deg,#17306b,#10234f);border:1px solid var(--line);cursor:pointer;color:var(--gold)}
+#cv{font-size:15px;font-weight:800;color:var(--gold);white-space:nowrap}
 [hidden]{display:none!important}
 </style>
 </head>
 <body>
-<div id="top" hidden><div id="brand" hidden></div><div id="cm" hidden>رصيدي<b id="cv"></b></div><div id="tt" hidden><div class="av" id="av"></div><span id="nm" class="mute"></span></div></div>
+<div id="top" hidden><div id="tt" hidden><div class="av" id="av"></div><div class="who"><b id="nm"></b><small id="rl"></small></div></div><div id="brand" hidden></div><div id="cm" hidden><span id="ci" style="display:flex"></span><b id="cv"></b></div></div>
 <div id="body"></div>
 <nav id="nav" hidden></nav>
 <div id="sheet" hidden><div class="in" id="sin"></div></div>
 <div id="toast" class="toast" hidden></div>
-<script src="/app.js?v=10"></script>
+<script src="/app.js?v=11"></script>
 </body>
 </html>
