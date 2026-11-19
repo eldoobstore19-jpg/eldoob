@@ -127,6 +127,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:var(--
 .tl .st.on i{background:var(--ok);border-color:var(--ok)}.tl .st.on{color:var(--tx)}.tl .st.bad i{background:var(--bad);border-color:var(--bad)}.tl .st.bad{color:var(--bad)}
 .spl{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--mu)}.spl img{animation:pls 1.4s ease-in-out infinite}@keyframes pls{50%{transform:scale(1.08);opacity:.75}}
 .chk{display:flex;align-items:center;gap:10px;margin:2px 0 14px;cursor:pointer}.chk input{width:20px;height:20px;margin:0;padding:0;accent-color:var(--ac);flex:none}
+.cats{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 12px;margin-bottom:6px;scroll-snap-type:x proximity;scrollbar-width:none}.cats::-webkit-scrollbar{display:none}
+.cat{flex:none;width:92px;text-align:center;cursor:pointer;scroll-snap-align:start}
+.cat img,.cat .ph0{width:92px;height:92px;border-radius:20px;object-fit:cover;border:1px solid var(--line);background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--mu)}
+.cat span{display:block;margin-top:6px;font-size:12px;font-weight:700;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.bub{max-width:82%;padding:9px 12px;border-radius:16px;line-height:1.6;white-space:pre-wrap;word-break:break-word}.bub small{display:block;margin-top:4px;font-size:11px;opacity:.7}
+.bub.me{align-self:flex-start;background:#17306b;border-bottom-right-radius:4px}.bub.adm{align-self:flex-end;background:var(--card2);border:1px solid var(--line);border-bottom-left-radius:4px}
+#nav button{position:relative}.dot{position:absolute;top:6px;inset-inline-end:24%;width:9px;height:9px;border-radius:50%;background:var(--bad)}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -136,6 +144,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:var(--
 <nav id="nav" hidden></nav>
 <div id="sheet" hidden><div class="in" id="sin"></div></div>
 <div id="toast" class="toast" hidden></div>
-<script src="/app.js?v=13"></script>
+<script src="/app.js?v=14"></script>
 </body>
 </html>
