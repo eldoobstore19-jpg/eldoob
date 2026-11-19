@@ -7,7 +7,7 @@ let webpush = null;
 try { webpush = (await import('web-push')).default; } catch { console.warn('web-push غير مثبّت: الإشعارات معطّلة'); }
 
 export function mount(app, H) {
-  const { pool, asUser, tx, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf,
+  const { pool, asUser, tx, tg, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf,
     email_, password_, otpHash, token, SECRET, bcrypt, jwt, checkOtp } = H;
   const later = fn => fn().catch(e => console.error('extra:', e.message));
 
@@ -16,6 +16,10 @@ export function mount(app, H) {
     .then(() => pool.query(`CREATE TABLE IF NOT EXISTS id_documents (user_id bigint PRIMARY KEY, front_id uuid NOT NULL, back_id uuid NOT NULL, created_at timestamptz DEFAULT now())`))
     .then(() => pool.query('ALTER TABLE payout_requests ADD COLUMN IF NOT EXISTS admin_note text'))
     .then(() => pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at timestamptz'))
+    .then(() => pool.query('CREATE TABLE IF NOT EXISTS categories (id serial PRIMARY KEY, name text NOT NULL, image text, sort_order int NOT NULL DEFAULT 0, created_at timestamptz DEFAULT now())'))
+    .then(() => pool.query('CREATE TABLE IF NOT EXISTS product_category (product_id bigint PRIMARY KEY, category_id int NOT NULL REFERENCES categories(id) ON DELETE CASCADE)'))
+    .then(() => pool.query('CREATE TABLE IF NOT EXISTS support_messages (id bigserial PRIMARY KEY, user_id bigint NOT NULL, from_admin boolean NOT NULL DEFAULT false, body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), read_at timestamptz)'))
+    .then(() => pool.query('CREATE INDEX IF NOT EXISTS idx_support_user ON support_messages (user_id, id)'))
     .then(() => pool.query('CREATE TABLE IF NOT EXISTS site_settings (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz DEFAULT now())'))
     .catch(e => console.error('id tables:', e.message));
   const IMG = { 'image/jpeg': 1, 'image/png': 1, 'image/webp': 1 };
@@ -195,6 +199,112 @@ export function mount(app, H) {
       const { rows } = await pool.query("SELECT id FROM users WHERE role = 'affiliate' AND is_active");
       await push(rows.map(r => r.id), 'ELDOOB.DZ', text.slice(0, 140), '/');
     });
+    res.json({ ok: true });
+  }));
+
+  /* ───── الفئات ───── */
+  app.get('/api/categories', auth, wrap(async (_req, res) => {
+    await ready2;
+    const { rows } = await pool.query(`SELECT c.id, c.name, c.image, COALESCE((SELECT json_agg(pc.product_id) FROM product_category pc WHERE pc.category_id = c.id), '[]'::json) AS product_ids FROM categories c ORDER BY c.sort_order, c.id`);
+    res.json(rows);
+  }));
+  app.post('/api/admin/categories', ...admin, wrap(async (req, res) => {
+    await ready2;
+    const name = str(req.body.name, 'اسم الفئة', 60), image = req.body.image ? String(req.body.image).slice(0, 500) : null;
+    const { rows: [r] } = await pool.query('INSERT INTO categories (name, image, sort_order) VALUES ($1, $2, COALESCE((SELECT max(sort_order) + 1 FROM categories), 0)) RETURNING id', [name, image]);
+    res.status(201).json({ id: r.id });
+  }));
+  app.patch('/api/admin/categories/:id', ...admin, wrap(async (req, res) => {
+    await ready2;
+    const name = req.body.name === undefined ? null : str(req.body.name, 'اسم الفئة', 60);
+    const setImg = req.body.image !== undefined, image = req.body.image ? String(req.body.image).slice(0, 500) : null;
+    await pool.query('UPDATE categories SET name = COALESCE($2, name), image = CASE WHEN $3::boolean THEN $4::text ELSE image END WHERE id = $1', [int(req.params.id, 'المعرّف', 1), name, setImg, image]);
+    res.json({ ok: true });
+  }));
+  app.delete('/api/admin/categories/:id', ...admin, wrap(async (req, res) => {
+    await ready2;
+    await pool.query('DELETE FROM categories WHERE id = $1', [int(req.params.id, 'المعرّف', 1)]);
+    res.json({ ok: true });
+  }));
+  app.put('/api/admin/products/:id/category', ...admin, wrap(async (req, res) => {
+    await ready2;
+    const pid = int(req.params.id, 'المعرّف', 1), cid = req.body.category_id ? int(req.body.category_id, 'الفئة', 1) : null;
+    if (cid === null) await pool.query('DELETE FROM product_category WHERE product_id = $1', [pid]);
+    else await pool.query('INSERT INTO product_category (product_id, category_id) VALUES ($1, $2) ON CONFLICT (product_id) DO UPDATE SET category_id = EXCLUDED.category_id', [pid, cid]);
+    res.json({ ok: true });
+  }));
+
+  /* ───── صندوق الرسائل (مسوّق ↔ إدارة) ───── */
+  app.get('/api/inbox', auth, wrap(async (req, res) => {
+    await ready2;
+    const { rows } = await pool.query('SELECT id, from_admin, body, created_at FROM support_messages WHERE user_id = $1 ORDER BY id DESC LIMIT 100', [req.user.id]);
+    await pool.query('UPDATE support_messages SET read_at = now() WHERE user_id = $1 AND from_admin AND read_at IS NULL', [req.user.id]);
+    res.json(rows.reverse());
+  }));
+  app.get('/api/inbox/unread', auth, wrap(async (req, res) => {
+    await ready2;
+    const { rows: [r] } = await pool.query('SELECT count(*)::int AS n FROM support_messages WHERE user_id = $1 AND from_admin AND read_at IS NULL', [req.user.id]);
+    res.json({ n: r.n });
+  }));
+  app.post('/api/inbox', auth, wrap(async (req, res) => {
+    await ready2;
+    if (req.user.role === 'admin') throw bad('استخدم صندوق المدير');
+    const body = str(req.body.body, 'الرسالة', 1000);
+    const { rows: [c] } = await pool.query("SELECT count(*)::int AS n FROM support_messages WHERE user_id = $1 AND NOT from_admin AND created_at > now() - interval '10 minutes'", [req.user.id]);
+    if (c.n >= 10) throw bad('أرسلت رسائل كثيرة، انتظر قليلاً', 429);
+    await pool.query('INSERT INTO support_messages (user_id, from_admin, body) VALUES ($1, false, $2)', [req.user.id, body]);
+    pool.query('SELECT full_name FROM users WHERE id = $1', [req.user.id]).then(r => tg(`رسالة جديدة من ${(r.rows[0] || {}).full_name || 'مسوّق'}:\n${body}`)).catch(() => {});
+    res.status(201).json({ ok: true });
+  }));
+  app.get('/api/admin/inbox', ...admin, wrap(async (_req, res) => {
+    await ready2;
+    const { rows } = await pool.query(`SELECT m.user_id, u.full_name AS name, (array_agg(m.body ORDER BY m.id DESC))[1] AS last_body,
+        EXTRACT(EPOCH FROM (now() - max(m.created_at)))::bigint AS idle_s, count(*) FILTER (WHERE NOT m.from_admin AND m.read_at IS NULL)::int AS unread
+      FROM support_messages m JOIN users u ON u.id = m.user_id GROUP BY m.user_id, u.full_name ORDER BY max(m.created_at) DESC LIMIT 200`);
+    res.json(rows);
+  }));
+  app.get('/api/admin/inbox/:uid', ...admin, wrap(async (req, res) => {
+    await ready2;
+    const uid = int(req.params.uid, 'المعرّف', 1);
+    const { rows: [u] } = await pool.query('SELECT full_name FROM users WHERE id = $1', [uid]);
+    if (!u) throw bad('المستخدم غير موجود', 404);
+    const { rows } = await pool.query('SELECT id, from_admin, body, created_at FROM support_messages WHERE user_id = $1 ORDER BY id DESC LIMIT 100', [uid]);
+    await pool.query('UPDATE support_messages SET read_at = now() WHERE user_id = $1 AND NOT from_admin AND read_at IS NULL', [uid]);
+    res.json({ name: u.full_name, msgs: rows.reverse() });
+  }));
+  app.post('/api/admin/inbox/:uid', ...admin, wrap(async (req, res) => {
+    await ready2;
+    const uid = int(req.params.uid, 'المعرّف', 1), body = str(req.body.body, 'الرسالة', 1000);
+    await pool.query('INSERT INTO support_messages (user_id, from_admin, body) VALUES ($1, true, $2)', [uid, body]);
+    later(() => push([uid], 'ELDOOB.DZ', `رد جديد من الإدارة: ${body}`.slice(0, 160), '/'));
+    res.status(201).json({ ok: true });
+  }));
+
+  /* ───── تيليغرام ───── */
+  const TGT = process.env.TELEGRAM_BOT_TOKEN || '';
+  app.get('/api/admin/telegram', ...admin, wrap(async (_req, res) => {
+    await ready2;
+    const { rows: [r] } = await pool.query("SELECT value FROM site_settings WHERE key = 'telegram_chat'");
+    res.json({ token: !!TGT, chat: !!(r || process.env.TELEGRAM_CHAT_ID) });
+  }));
+  app.get('/api/admin/telegram/chats', ...admin, wrap(async (_req, res) => {
+    if (!TGT) throw bad('أضف TELEGRAM_BOT_TOKEN في إعدادات Render أولاً');
+    const j = await (await fetch(`https://api.telegram.org/bot${TGT}/getUpdates`)).json();
+    if (!j.ok) throw bad('تعذّر الاتصال بتيليغرام، تأكد من التوكن');
+    const seen = {};
+    for (const u of j.result || []) { const m = u.message || u.channel_post || u.my_chat_member, ch = m && m.chat; if (ch && !seen[ch.id]) seen[ch.id] = { id: String(ch.id), name: ch.title || [ch.first_name, ch.last_name].filter(Boolean).join(' ') || ch.username || String(ch.id) }; }
+    res.json(Object.values(seen));
+  }));
+  app.post('/api/admin/telegram/link', ...admin, wrap(async (req, res) => {
+    await ready2;
+    const id = String(req.body.chat_id || '').trim();
+    if (!/^-?\d{5,20}$/.test(id)) throw bad('معرّف المحادثة غير صالح');
+    await pool.query("INSERT INTO site_settings (key, value) VALUES ('telegram_chat', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()", [id]);
+    await tg('تم ربط إشعارات ELDOOB.DZ بنجاح');
+    res.json({ ok: true });
+  }));
+  app.post('/api/admin/telegram/test', ...admin, wrap(async (_req, res) => {
+    if (!(await tg('رسالة اختبار من ELDOOB.DZ'))) throw bad('تعذّر الإرسال، تأكد من التوكن ومن ربط المحادثة');
     res.json({ ok: true });
   }));
 
