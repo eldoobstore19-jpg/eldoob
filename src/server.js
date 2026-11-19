@@ -55,6 +55,18 @@ const int = (v, name, min = 0) => { const n = Number(v); if (!Number.isInteger(n
 const str = (v, name, max = 200) => { if (typeof v !== 'string' || !v.trim() || v.length > max) throw bad(`${name} مطلوب`); return v.trim(); };
 const oneOf = (v, list, name) => { if (!list.includes(v)) throw bad(`${name} غير صالح`); return v; };
 const opt = (v, f) => (v === undefined ? null : f(v));
+// إشعارات تيليغرام للمدير (تُتجاهل بصمت إن لم يُضبط TELEGRAM_BOT_TOKEN أو لم تُربط المحادثة)
+const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+async function tg(text) {
+  if (!TG_TOKEN) return false;
+  try {
+    let chat = process.env.TELEGRAM_CHAT_ID || '';
+    try { const { rows: [r] } = await pool.query("SELECT value FROM site_settings WHERE key = 'telegram_chat'"); if (r) chat = r.value; } catch (e) {}
+    if (!chat) return false;
+    const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text: String(text).slice(0, 3500) }) });
+    return r.ok;
+  } catch (e) { console.error('telegram:', e.message); return false; }
+}
 // معاملة بصلاحيات الخادم (بدون RLS): تُستخدم فقط في المسارات التي تتحقق من الهوية بنفسها وتحدّد affiliate_id صراحةً.
 async function tx(fn) { const c = await pool.connect(); try { await c.query('BEGIN'); const out = await fn(c); await c.query('COMMIT'); return out; } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); } }
 const payAcct = (m, a) => { a = String(a).replace(/\s/g, ''); if (m === 'flexy' && !/^0[567]\d{8}$/.test(a)) throw bad('رقم فليكسي غير صالح (مثال: 0550000000)'); if (m === 'baridimob' && !/^\d{20}$/.test(a)) throw bad('رقم RIP يجب أن يكون 20 رقماً بالضبط'); return a.slice(0, 40); };
@@ -110,7 +122,7 @@ async function checkOtp(purpose, email, code) {
 }
 
 // مسارات إضافية: استعادة كلمة السر، الدخول بالرمز، الإشعارات، الولايات والبلديات، السحب
-mount(app, { pool, asUser, tx, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf, email_, password_, otpHash, token, SECRET, bcrypt, jwt, checkOtp });
+mount(app, { pool, asUser, tx, tg, wrap, bad, auth, admin, affiliate, authLimiter, str, int, oneOf, email_, password_, otpHash, token, SECRET, bcrypt, jwt, checkOtp });
 
 app.post('/api/auth/register/start', authLimiter, wrap(async (req, res) => {
   const b = req.body, name = str(b.full_name, 'الاسم', 100), username = username_(b.username), phone = phone_(b.phone), email = email_(b.email), pass = password_(b.password);
@@ -125,6 +137,7 @@ app.post('/api/auth/register/verify', authLimiter, wrap(async (req, res) => {
   const { rows: [u] } = await pool.query(
     `INSERT INTO users (full_name, username, phone, email, password_hash, email_verified_at) VALUES ($1, $2, $3, $4, $5, now()) RETURNING id, role, full_name`,
     [d.full_name, d.username, d.phone, email, d.password_hash]);
+  tg(`مسوّق جديد سجّل: ${u.full_name}`);
   res.status(201).json({ token: token(u.id), user: { id: u.id, role: u.role, full_name: u.full_name } });
 }));
 
@@ -283,6 +296,7 @@ app.post('/api/orders', ...affiliate, wrap(async (req, res) => {
   const row = await asUser(req.user, async c => (await c.query(
     `INSERT INTO orders (affiliate_id, product_id, quantity, resale_price, customer_name, customer_phone, wilaya_code, delivery_type, commune, address)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`, [req.user.id, ...v])).rows[0]);
+  pool.query('SELECT p.title, u.full_name FROM products p, users u WHERE p.id = $1 AND u.id = $2', [v[0], req.user.id]).then(r => { const x = r.rows[0] || {}; tg(`طلب جديد #${row.id}\nالمسوّق: ${x.full_name || ''}\nالمنتج: ${x.title || ''} × ${v[1]}\nسعر البيع: ${v[2]} د.ج`); }).catch(() => {});
   res.status(201).json(row);
 }));
 
@@ -329,6 +343,7 @@ app.post('/api/payouts', affiliate, wrap(async (req, res) => {
       [req.user.id, amount, w.payout_method, w.payout_account]);
     return p;
   });
+  pool.query('SELECT full_name FROM users WHERE id = $1', [req.user.id]).then(r => tg(`طلب سحب جديد\nالمسوّق: ${(r.rows[0] || {}).full_name || ''}\nالمبلغ: ${amount} د.ج`)).catch(() => {});
   res.status(201).json(row);
 }));
 
